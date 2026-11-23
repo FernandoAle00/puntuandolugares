@@ -13,6 +13,10 @@ function applyTheme(next: Theme) {
   if (meta) {
     meta.setAttribute("content", next === "dark" ? "#0B1511" : "#F4F7F2");
   }
+  const appleBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  if (appleBar) {
+    appleBar.setAttribute("content", next === "dark" ? "black-translucent" : "default");
+  }
   try {
     localStorage.setItem(STORAGE_KEY, next);
   } catch {

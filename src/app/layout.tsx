@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Rubik } from "next/font/google";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 const rubik = Rubik({
@@ -18,7 +19,25 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "¿Dónde comemos? | Puntuando lugares",
-  description: "Guía compartida de lugares para comer, puntajes y reseñas.",
+  description: "Guía compartida de lugares para comer, puntajes, fotos y reseñas.",
+  applicationName: "Puntuando",
+  appleWebApp: {
+    capable: true,
+    title: "Puntuando",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
@@ -37,6 +56,8 @@ const themeInitScript = `
     document.documentElement.dataset.theme = theme;
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "dark" ? "#0B1511" : "#F4F7F2");
+    var appleBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (appleBar) appleBar.setAttribute("content", theme === "dark" ? "black-translucent" : "default");
   } catch (e) {
     document.documentElement.dataset.theme = "light";
   }
@@ -58,7 +79,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <PwaRegister />
+        {children}
+      </body>
     </html>
   );
 }

@@ -3,6 +3,7 @@ import { PocketGuide } from "@/components/pocket-guide";
 import { listPlacesForUser } from "@/db/places-repo";
 import type { AccentColor } from "@/db/schema";
 import { getSocialSnapshot, listGroupsForUser } from "@/db/social-repo";
+import { isGoogleAuthEnabled } from "@/lib/auth";
 import { getServerSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,10 @@ export default async function HomePage() {
 
   if (!session) {
     return (
-      <AuthScreen inviteRequired={Boolean(process.env.INVITE_CODE?.trim())} />
+      <AuthScreen
+        inviteRequired={Boolean(process.env.INVITE_CODE?.trim())}
+        googleEnabled={isGoogleAuthEnabled()}
+      />
     );
   }
 

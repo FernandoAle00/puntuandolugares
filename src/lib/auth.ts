@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/db";
@@ -18,6 +18,38 @@ const extraOrigins = (process.env.TRUSTED_ORIGINS || "")
   .filter(Boolean);
 const trustedOrigins = Array.from(new Set([baseURL, ...extraOrigins]));
 
+export function isGoogleAuthEnabled(): boolean {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim(),
+  );
+}
+
+// Data minimization: strip unused OAuth tokens and session metadata (same practice as Queburger)
+const stripOAuthTokens = <T extends object>(account: T) => ({
+  data: {
+    ...account,
+    accessToken: null,
+    refreshToken: null,
+    idToken: null,
+    accessTokenExpiresAt: null,
+    refreshTokenExpiresAt: null,
+  },
+});
+
+const minimalDataHooks = {
+  session: {
+    create: {
+      before: async (session) => ({
+        data: { ...session, ipAddress: null, userAgent: null },
+      }),
+    },
+  },
+  account: {
+    create: { before: async (account) => stripOAuthTokens(account) },
+    update: { before: async (account) => stripOAuthTokens(account) },
+  },
+} satisfies BetterAuthOptions["databaseHooks"];
+
 export const auth = betterAuth({
   secret: authSecret,
   baseURL,
@@ -31,6 +63,21 @@ export const auth = betterAuth({
     minPasswordLength: 8,
     maxPasswordLength: 128,
     autoSignIn: true,
+  },
+  socialProviders: isGoogleAuthEnabled()
+    ? {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID!.trim(),
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET!.trim(),
+          prompt: "select_account",
+        },
+      }
+    : undefined,
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google"],
+    },
   },
   user: {
     additionalFields: {
@@ -55,6 +102,7 @@ export const auth = betterAuth({
     window: 60,
     max: 30,
   },
+  databaseHooks: minimalDataHooks,
   advanced: {
     useSecureCookies: isHttps,
   },

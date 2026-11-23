@@ -12,11 +12,16 @@ const authSecret =
 
 const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 const isHttps = baseURL.startsWith("https://");
+const extraOrigins = (process.env.TRUSTED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+const trustedOrigins = Array.from(new Set([baseURL, ...extraOrigins]));
 
 export const auth = betterAuth({
   secret: authSecret,
   baseURL,
-  trustedOrigins: [baseURL],
+  trustedOrigins,
   database: drizzleAdapter(db, {
     provider: "sqlite",
     schema,

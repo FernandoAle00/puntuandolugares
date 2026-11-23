@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+:root,
+html[data-theme="light"] {
+  --bg: #f4f7f2;
+  --surface: #ffffff;
+  --surface-soft: #eaf0e7;
+  --fg: #0f291e;
+  --fg-muted: #4b6b5c;
+  --border: #0f291e;
+  --border-soft: rgba(15, 41, 30, 0.2);
+  --shadow-ink: #0f291e;
+  --highlight-bg: #d9f99d;
+  --highlight-fg: #0f291e;
+  --highlight-muted: #1f4736;
+  --badge-bg: #0f291e;
+  --badge-fg: #d9f99d;
+  --card-pick-bg: #fef9c3;
+  --chip-active-bg: #ea580c;
+  --chip-active-fg: #ffffff;
+  --pill-bg: rgba(15, 41, 30, 0.08);
+  --pill-fg: #1f4736;
+  --backdrop: rgba(15, 41, 30, 0.52);
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+
+  --accent-teal: #0d9488;
+  --accent-orange: #ea580c;
+  --accent-cobalt: #2563eb;
+  --accent-berry: #db2777;
+  --accent-on-solid: #ffffff;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-theme="dark"] {
+  --bg: #0b1511;
+  --surface: #12211b;
+  --surface-soft: #1a2e26;
+  --fg: #ecf5ee;
+  --fg-muted: #93b4a4;
+  --border: #335848;
+  --border-soft: rgba(236, 245, 238, 0.18);
+  --shadow-ink: #040907;
+  --highlight-bg: #c8f560;
+  --highlight-fg: #0b1511;
+  --highlight-muted: #1f3c2d;
+  --badge-bg: #c8f560;
+  --badge-fg: #0b1511;
+  --card-pick-bg: #1e3123;
+  --chip-active-bg: #fb923c;
+  --chip-active-fg: #0b1511;
+  --pill-bg: rgba(236, 245, 238, 0.09);
+  --pill-fg: #c2ddd0;
+  --backdrop: rgba(4, 9, 7, 0.72);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.16);
+
+  --accent-teal: #2dd4bf;
+  --accent-orange: #fb923c;
+  --accent-cobalt: #60a5fa;
+  --accent-berry: #f472b6;
+  --accent-on-solid: #0b1511;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.font-display {
+  font-family: var(--font-display), -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+.pressable {
+  transition:
+    transform 120ms var(--ease-out),
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+.zine-card {
+  background-color: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zine-card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: 3px 3px 0 var(--shadow-ink);
+  }
+}
+
+.zine-roulette {
+  background-color: var(--highlight-bg);
+  color: var(--highlight-fg);
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 4px 4px 0 var(--shadow-ink);
+}
+
+.zine-modal {
+  background-color: var(--surface);
+  color: var(--fg);
+  border: 2px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 4px 4px 0 var(--shadow-ink);
+}
+
+.zine-sheet {
+  background-color: var(--surface);
+  color: var(--fg);
+  border-top: 2px solid var(--border);
+  border-left: 2px solid var(--border);
+  border-right: 2px solid var(--border);
+  border-radius: 22px 22px 0 0;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 640px) {
+  .zine-sheet {
+    border-bottom: 2px solid var(--border);
+    border-radius: 22px;
+    box-shadow: 5px 5px 0 var(--shadow-ink);
+  }
+}
+
+.zine-input {
+  width: 100%;
+  background-color: var(--bg);
+  color: var(--fg);
+  border: 1.5px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: border-color 120ms ease;
+}
+
+.zine-input::placeholder {
+  color: var(--fg-muted);
+}
+
+.zine-input:focus {
+  outline: none;
+  border-color: var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    container_name: puntuandolugares
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-3010}:3000"
+    volumes:
+      - ./data:/app/data

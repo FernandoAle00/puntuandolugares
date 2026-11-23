@@ -1,0 +1,2723 @@
+<!doctype html>
+<!--
+  PROTOTYPE DESCARTABLE (UI)
+  Pregunta: ¿Qué identidad visual, estructura e interacción funciona mejor para la guía de lugares de comida de Fer y Juli?
+  Tres mundos visuales y layouts distintos conmutables vía ?variant=A|B|C y la barra flotante inferior:
+    A · Carta de bodegón (papel cálido luminoso, azul cobalto + frambuesa, serif editorial, listado vivo con destacados y edición inline)
+    B · Sobremesa nocturna (oscuro ciruela profundo, cian + coral + azafrán, grotesca expresiva, maestro-detalle en dos columnas con ficha)
+    C · Guía de bolsillo (papel salvia + tinta bosque + lima cítrica, mobile-first con ruleta de pendientes y bottom sheet táctil)
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#FCFAF5" id="meta-theme-color" />
+  <title>Puntuando lugares · Prototype UI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 15px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
+    }
+
+    body {
+      margin: 0;
+      padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+      transition: background-color 180ms ease, color 180ms ease;
+    }
+
+    body[data-variant="A"] {
+      background: #FCFAF5;
+      color: #14213D;
+      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body[data-variant="B"] {
+      background: #110E14;
+      color: #FAF7F2;
+      font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body[data-variant="C"] {
+      background: #F4F7F2;
+      color: #0F291E;
+      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    button, a, [role="button"] {
+      font: inherit;
+      color: inherit;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    button {
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    a {
+      text-decoration: none;
+    }
+
+    input, textarea, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    @media (pointer: coarse) {
+      input, textarea, select {
+        font-size: 16px;
+      }
+    }
+
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .press:active {
+      transform: scale(0.97);
+    }
+
+    /* =====================================================================
+       SHARED MODAL (ADD PLACE) — ADAPTS TO ACTIVE VARIANT
+       ===================================================================== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 17, 24, 0.65);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 70;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 440px;
+      max-height: 90%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    body[data-variant="A"] .modal-card {
+      background: #FCFAF5;
+      color: #14213D;
+      border: 2px solid #14213D;
+      box-shadow: 0 18px 50px rgba(20, 33, 61, 0.25);
+    }
+
+    body[data-variant="B"] .modal-card {
+      background: #1B1621;
+      color: #FAF7F2;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    body[data-variant="C"] .modal-card {
+      background: #FFFFFF;
+      color: #0F291E;
+      border: 2px solid #0F291E;
+      box-shadow: 4px 4px 0 #0F291E;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .m-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .m-field label {
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0.78;
+    }
+
+    .m-input {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1.5px solid currentColor;
+      border-color: color-mix(in srgb, currentColor 22%, transparent);
+      background: transparent;
+      font-size: 14px;
+    }
+
+    .m-input:focus {
+      outline: none;
+      border-color: currentColor;
+    }
+
+    .m-meals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .m-meal-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1.5px solid color-mix(in srgb, currentColor 20%, transparent);
+      transition: transform 120ms var(--ease-out), background 120ms ease;
+    }
+
+    .m-meal-btn[aria-pressed="true"] {
+      background: currentColor;
+    }
+
+    .m-meal-btn[aria-pressed="true"] span {
+      filter: invert(1);
+    }
+
+    body[data-variant="A"] .m-meal-btn[aria-pressed="true"] {
+      background: #14213D;
+      border-color: #14213D;
+      color: #FCFAF5;
+    }
+    body[data-variant="A"] .m-meal-btn[aria-pressed="true"] span { filter: none; }
+
+    body[data-variant="B"] .m-meal-btn[aria-pressed="true"] {
+      background: #FACC15;
+      border-color: #FACC15;
+      color: #110E14;
+    }
+    body[data-variant="B"] .m-meal-btn[aria-pressed="true"] span { filter: none; }
+
+    body[data-variant="C"] .m-meal-btn[aria-pressed="true"] {
+      background: #D9F99D;
+      border-color: #0F291E;
+      color: #0F291E;
+    }
+    body[data-variant="C"] .m-meal-btn[aria-pressed="true"] span { filter: none; }
+
+    .m-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .m-submit {
+      width: 100%;
+      padding: 11px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      transition: transform 120ms var(--ease-out);
+    }
+
+    body[data-variant="A"] .m-submit { background: #14213D; color: #FCFAF5; }
+    body[data-variant="B"] .m-submit { background: #FACC15; color: #110E14; }
+    body[data-variant="C"] .m-submit { background: #0F291E; color: #D9F99D; }
+
+    /* =====================================================================
+       VARIANT A: CARTA DE BODEGÓN
+       Bright sunlit linen (#FCFAF5), Cobalt ink (#14213D), Fer (#1D4ED8),
+       Juli (#E11D48), Highlighter Lemon (#FEF08A), Fraunces display serif
+       ===================================================================== */
+    .va-page {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 28px 22px 48px;
+    }
+
+    .va-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #14213D;
+    }
+
+    .va-title {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(30px, 5vw, 44px);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      margin: 0;
+      color: #14213D;
+    }
+
+    .va-legend {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: #4A5568;
+      font-weight: 500;
+    }
+
+    .va-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    .va-dot.fer { background: #1D4ED8; }
+    .va-dot.juli { background: #E11D48; }
+
+    .va-add-btn {
+      background: #14213D;
+      color: #FCFAF5;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: transform 120ms var(--ease-out), background 140ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .va-add-btn:hover { background: #1D4ED8; }
+    }
+
+    /* Specials / Top favorites banner */
+    .va-specials {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      padding: 20px 0;
+      border-bottom: 1px solid rgba(20, 33, 61, 0.14);
+    }
+
+    .va-special-card {
+      text-align: left;
+      background: #FEF9C3;
+      border: 1.5px solid #14213D;
+      border-radius: 14px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      transition: transform 140ms var(--ease-out), box-shadow 140ms ease;
+    }
+
+    .va-special-card:nth-child(2) {
+      background: #FFE4E6;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .va-special-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 0 #14213D;
+      }
+    }
+
+    .va-special-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #14213D;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-bottom: 6px;
+    }
+
+    .va-special-name {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: #14213D;
+    }
+
+    .va-special-meta {
+      font-size: 12px;
+      color: #334155;
+      margin-top: 4px;
+    }
+
+    .va-special-score {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1;
+      color: #14213D;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .va-special-pair {
+      font-family: "Plus Jakarta Sans", sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 4px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* Controls strip */
+    .va-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 0;
+      border-bottom: 1px solid rgba(20, 33, 61, 0.14);
+    }
+
+    .va-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .va-pill {
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      background: rgba(20, 33, 61, 0.05);
+      transition: transform 120ms var(--ease-out), background 120ms ease, color 120ms ease;
+    }
+
+    .va-pill[aria-selected="true"],
+    .va-pill[aria-pressed="true"] {
+      background: #14213D;
+      color: #FCFAF5;
+    }
+
+    .va-search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .va-search {
+      border: 1.5px solid rgba(20, 33, 61, 0.22);
+      background: #FFFFFF;
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 13px;
+      width: 210px;
+      color: #14213D;
+    }
+
+    .va-search:focus {
+      outline: none;
+      border-color: #1D4ED8;
+    }
+
+    .va-sort {
+      border: 1.5px solid rgba(20, 33, 61, 0.22);
+      background: #FFFFFF;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #14213D;
+    }
+
+    /* Rated menu rows */
+    .va-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .va-entry {
+      border-bottom: 1px solid rgba(20, 33, 61, 0.12);
+    }
+
+    .va-entry-btn {
+      width: 100%;
+      text-align: left;
+      padding: 16px 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      transition: background 120ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .va-entry-btn:hover { background: rgba(20, 33, 61, 0.035); }
+    }
+
+    .va-entry-btn[aria-expanded="true"] {
+      background: #FFFFFF;
+    }
+
+    .va-entry-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 12px;
+    }
+
+    .va-entry-name {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #14213D;
+      line-height: 1.15;
+    }
+
+    .va-meal-chip {
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      background: rgba(20, 33, 61, 0.07);
+      padding: 2px 9px;
+      border-radius: 999px;
+    }
+
+    .va-entry-addr {
+      font-size: 12px;
+      color: #64748B;
+    }
+
+    .va-gap-chip {
+      font-size: 11px;
+      font-weight: 700;
+      color: #9F1239;
+      background: #FFE4E6;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .va-quotes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      margin-top: 6px;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    .va-q-fer strong { color: #1D4ED8; }
+    .va-q-juli strong { color: #E11D48; }
+
+    .va-scores-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .va-badge {
+      min-width: 44px;
+      text-align: center;
+      padding: 5px 8px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .va-badge.fer {
+      background: #DBEAFE;
+      color: #1D4ED8;
+    }
+
+    .va-badge.juli {
+      background: #FFE4E6;
+      color: #BE123C;
+    }
+
+    .va-avg-stamp {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 26px;
+      font-weight: 800;
+      min-width: 52px;
+      text-align: right;
+      color: #14213D;
+      line-height: 1;
+    }
+
+    .va-drawer {
+      background: #FFFFFF;
+      border-top: 1px dashed rgba(20, 33, 61, 0.18);
+      padding: 16px 14px 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .va-drawer-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .va-drawer-person {
+      background: #F8FAFC;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .va-drawer-person.fer { border: 1.5px solid #BFDBFE; }
+    .va-drawer-person.juli { border: 1.5px solid #FECDD3; }
+
+    .va-stepper {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .va-step-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1.5px solid rgba(20, 33, 61, 0.2);
+      background: #FFFFFF;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .va-note-area {
+      width: 100%;
+      min-height: 64px;
+      border: 1.5px solid rgba(20, 33, 61, 0.16);
+      border-radius: 8px;
+      background: #FFFFFF;
+      padding: 8px 10px;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .va-note-area:focus {
+      outline: none;
+      border-color: #14213D;
+    }
+
+    .va-maps-link {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1.5px solid #14213D;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Wishlist section in Variant A */
+    .va-wishlist {
+      margin-top: 28px;
+      padding: 20px;
+      border-radius: 16px;
+      border: 2px dashed rgba(20, 33, 61, 0.26);
+      background: #FFFDF8;
+    }
+
+    .va-wishlist-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .va-wishlist-title {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .va-wish-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .va-wish-tile {
+      background: #FFFFFF;
+      border: 1.5px solid rgba(20, 33, 61, 0.16);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-align: left;
+      transition: transform 120ms var(--ease-out), border-color 120ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .va-wish-tile:hover {
+        border-color: #14213D;
+        transform: translateY(-1px);
+      }
+    }
+
+    .va-wish-name {
+      font-weight: 700;
+      font-size: 14px;
+      color: #14213D;
+    }
+
+    .va-wish-meal {
+      font-size: 12px;
+      color: #64748B;
+      margin-top: 2px;
+    }
+
+    .va-wish-cta {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1D4ED8;
+      background: #EFF6FF;
+      padding: 5px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 720px) {
+      .va-page { padding: 18px 14px 40px; }
+      .va-specials { grid-template-columns: 1fr; }
+      .va-entry-btn { grid-template-columns: 1fr; gap: 10px; }
+      .va-scores-right { justify-content: flex-start; }
+      .va-avg-stamp { margin-left: auto; }
+      .va-drawer { grid-template-columns: 1fr; }
+      .va-search-box { width: 100%; }
+      .va-search { flex: 1; width: auto; }
+    }
+
+    /* =====================================================================
+       VARIANT B: SOBREMESA NOCTURNA
+       Rich deep plum-charcoal (#110E14), velvet surface (#1B1621),
+       Sky Cyan Fer (#38BDF8), Coral Rose Juli (#FB7185), Saffron (#FACC15),
+       Bricolage Grotesque display
+       ===================================================================== */
+    .vb-layout {
+      display: grid;
+      grid-template-columns: 370px minmax(0, 1fr);
+      max-width: 1260px;
+      margin: 0 auto;
+      min-height: 760px;
+    }
+
+    .vb-sidebar {
+      border-right: 1px solid rgba(255, 255, 255, 0.09);
+      display: flex;
+      flex-direction: column;
+      background: #141019;
+      min-width: 0;
+    }
+
+    .vb-side-head {
+      padding: 20px 18px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .vb-brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .vb-brand {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0;
+      color: #FAF7F2;
+    }
+
+    .vb-who {
+      display: inline-flex;
+      background: #221B2A;
+      padding: 3px;
+      border-radius: 999px;
+      gap: 2px;
+    }
+
+    .vb-who button {
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #B4ABC0;
+      transition: background 140ms ease, color 140ms ease;
+    }
+
+    .vb-who button[data-user="fer"][aria-pressed="true"] {
+      background: #38BDF8;
+      color: #082F49;
+    }
+
+    .vb-who button[data-user="juli"][aria-pressed="true"] {
+      background: #FB7185;
+      color: #4C0519;
+    }
+
+    .vb-side-search-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .vb-search {
+      flex: 1;
+      background: #1E1826;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #FAF7F2;
+    }
+
+    .vb-search::placeholder { color: #8A8098; }
+    .vb-search:focus { outline: none; border-color: #FACC15; }
+
+    .vb-add-btn {
+      background: #FACC15;
+      color: #110E14;
+      font-weight: 800;
+      font-size: 14px;
+      padding: 0 14px;
+      border-radius: 10px;
+      white-space: nowrap;
+      transition: transform 120ms var(--ease-out);
+    }
+
+    .vb-filter-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .vb-chip {
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #A89FB5;
+      background: rgba(255, 255, 255, 0.05);
+      white-space: nowrap;
+    }
+
+    .vb-chip[aria-pressed="true"] {
+      background: #FAF7F2;
+      color: #110E14;
+    }
+
+    .vb-list {
+      flex: 1;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .vb-row {
+      width: 100%;
+      text-align: left;
+      padding: 12px 14px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: background 120ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .vb-row:hover { background: rgba(255, 255, 255, 0.05); }
+    }
+
+    .vb-row[aria-current="true"] {
+      background: #251E2E;
+      box-shadow: inset 3px 0 0 #FACC15;
+    }
+
+    .vb-row-name {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #FAF7F2;
+    }
+
+    .vb-row-sub {
+      font-size: 12px;
+      color: #9A90A8;
+      margin-top: 2px;
+    }
+
+    .vb-row-score-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 800;
+      font-size: 15px;
+      background: rgba(250, 204, 21, 0.14);
+      color: #FACC15;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .vb-row-score-pill.pending {
+      background: rgba(255, 255, 255, 0.07);
+      color: #A89FB5;
+      font-family: "DM Sans", sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .vb-row-pair {
+      font-size: 11px;
+      margin-top: 4px;
+      text-align: right;
+      font-weight: 700;
+    }
+
+    .vb-stage {
+      padding: 28px 34px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .vb-back-btn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #FACC15;
+      margin-bottom: -10px;
+    }
+
+    /* Atmospheric culinary mood banner (static gradient, zero repaint) */
+    .vb-banner {
+      border-radius: 18px;
+      padding: 24px 26px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .vb-banner.mood-night {
+      background: linear-gradient(135deg, #2D1836 0%, #1B1626 58%, #3B1A2B 100%);
+    }
+
+    .vb-banner.mood-cafe {
+      background: linear-gradient(135deg, #3A2514 0%, #1E1821 60%, #3E2228 100%);
+    }
+
+    .vb-banner.mood-lunch {
+      background: linear-gradient(135deg, #123133 0%, #171A24 60%, #27223B 100%);
+    }
+
+    .vb-place-title {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin: 0 0 10px;
+      color: #FAF7F2;
+    }
+
+    .vb-banner-tags {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #D6CFE0;
+    }
+
+    .vb-meal-badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      font-weight: 600;
+      color: #FAF7F2;
+    }
+
+    .vb-maps-pill {
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(250, 204, 21, 0.18);
+      color: #FDE047;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .vb-score-hero {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .vb-score-giant {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 0.95;
+      color: #FACC15;
+    }
+
+    .vb-score-caption {
+      font-size: 12px;
+      color: #C7BED4;
+      margin-top: 6px;
+    }
+
+    /* Comparison ruler */
+    .vb-scale-box {
+      background: #1B1621;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 20px 22px 16px;
+    }
+
+    .vb-scale-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #B4ABC0;
+    }
+
+    .vb-scale-verdict {
+      font-weight: 700;
+      color: #FAF7F2;
+    }
+
+    .vb-track-wrap {
+      position: relative;
+      height: 44px;
+      display: flex;
+      align-items: center;
+    }
+
+    .vb-track {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: #2C2436;
+    }
+
+    .vb-track-fill {
+      position: absolute;
+      top: 0;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #38BDF8, #FB7185);
+    }
+
+    .vb-pin {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .vb-pin-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2.5px solid #1B1621;
+    }
+
+    .vb-pin-dot.fer { background: #38BDF8; }
+    .vb-pin-dot.juli { background: #FB7185; }
+
+    .vb-pin-label {
+      position: absolute;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .vb-pin-label.top { bottom: 16px; color: #38BDF8; }
+    .vb-pin-label.bottom { top: 16px; color: #FB7185; }
+
+    .vb-ticks {
+      position: relative;
+      height: 18px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: #847994;
+    }
+
+    .vb-tick {
+      position: absolute;
+      transform: translateX(-50%);
+    }
+    .vb-tick:first-child { transform: translateX(0); }
+    .vb-tick:last-child { transform: translateX(-100%); }
+
+    /* Side-by-side reviewer panels */
+    .vb-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .vb-panel {
+      background: #1B1621;
+      border-radius: 16px;
+      padding: 18px;
+      border: 1.5px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .vb-panel.fer[data-mine="true"] { border-color: #38BDF8; }
+    .vb-panel.juli[data-mine="true"] { border-color: #FB7185; }
+
+    .vb-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .vb-avatar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .vb-avatar-badge {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .vb-avatar-badge.fer { background: #38BDF8; color: #082F49; }
+    .vb-avatar-badge.juli { background: #FB7185; color: #4C0519; }
+
+    .vb-panel-num {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+    }
+
+    .vb-range {
+      width: 100%;
+      cursor: pointer;
+    }
+    .vb-range.fer { accent-color: #38BDF8; }
+    .vb-range.juli { accent-color: #FB7185; }
+
+    .vb-notes {
+      width: 100%;
+      min-height: 88px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #120E16;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: #FAF7F2;
+      resize: vertical;
+    }
+
+    .vb-notes:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); }
+
+    .vb-addr-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .vb-addr-input {
+      flex: 1;
+      background: #1B1621;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #FAF7F2;
+    }
+
+    .vb-ghost-btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      font-size: 13px;
+      font-weight: 600;
+      color: #C7BED4;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 840px) {
+      .vb-layout { grid-template-columns: minmax(0, 1fr); }
+      .vb-sidebar { border-right: 0; }
+      .vb-search { min-width: 0; }
+      .vb-layout[data-mobile="detail"] .vb-sidebar { display: none; }
+      .vb-layout[data-mobile="list"] .vb-stage { display: none; }
+      .vb-back-btn { display: inline-flex; }
+      .vb-stage { padding: 18px 16px 36px; gap: 18px; }
+      .vb-banner { flex-direction: column; align-items: flex-start; padding: 18px; }
+      .vb-score-hero { text-align: left; }
+      .vb-panels { grid-template-columns: 1fr; }
+      .vb-addr-bar { flex-direction: column; align-items: stretch; }
+    }
+
+    /* =====================================================================
+       VARIANT C: GUÍA DE BOLSILLO
+       Fresh sage paper (#F4F7F2), Deep forest ink (#0F291E),
+       Citrus lime (#D9F99D), Fer teal (#0D9488), Juli tangerine (#EA580C),
+       Rubik display, tactile zine outlines & mobile bottom sheet
+       ===================================================================== */
+    .vc-shell {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 18px 16px 48px;
+    }
+
+    .vc-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .vc-logo {
+      font-family: "Rubik", sans-serif;
+      font-size: clamp(19px, 5vw, 24px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0;
+      color: #0F291E;
+      white-space: nowrap;
+    }
+
+    .vc-top-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .vc-who-toggle {
+      display: inline-flex;
+      border: 2px solid #0F291E;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+
+    .vc-who-toggle button {
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0F291E;
+    }
+
+    .vc-who-toggle button[data-user="fer"][aria-pressed="true"] {
+      background: #0D9488;
+      color: #FFFFFF;
+    }
+
+    .vc-who-toggle button[data-user="juli"][aria-pressed="true"] {
+      background: #EA580C;
+      color: #FFFFFF;
+    }
+
+    .vc-add-btn {
+      background: #0F291E;
+      color: #D9F99D;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: transform 120ms var(--ease-out);
+    }
+
+    /* Interactive Decision Card */
+    .vc-roulette {
+      background: #D9F99D;
+      border: 2px solid #0F291E;
+      border-radius: 18px;
+      padding: 16px 18px;
+      box-shadow: 4px 4px 0 #0F291E;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .vc-roulette-title {
+      font-family: "Rubik", sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: #0F291E;
+      line-height: 1.2;
+    }
+
+    .vc-roulette-sub {
+      font-size: 13px;
+      color: #1F4736;
+      margin-top: 3px;
+    }
+
+    .vc-spin-btn {
+      background: #0F291E;
+      color: #FFFFFF;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: transform 120ms var(--ease-out);
+    }
+
+    /* Mode tabs + Meal chips */
+    .vc-modes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .vc-mode-btn {
+      padding: 9px 8px;
+      border-radius: 12px;
+      border: 2px solid #0F291E;
+      background: #FFFFFF;
+      font-size: 13px;
+      font-weight: 700;
+      color: #0F291E;
+      text-align: center;
+      transition: transform 120ms var(--ease-out), background 120ms ease;
+    }
+
+    .vc-mode-btn[aria-selected="true"] {
+      background: #0F291E;
+      color: #FFFFFF;
+    }
+
+    .vc-meals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .vc-meal-pill {
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(15, 41, 30, 0.08);
+      color: #1F4736;
+      white-space: nowrap;
+    }
+
+    .vc-meal-pill[aria-pressed="true"] {
+      background: #EA580C;
+      color: #FFFFFF;
+    }
+
+    /* Pocket Guide Cards */
+    .vc-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .vc-card {
+      width: 100%;
+      text-align: left;
+      background: #FFFFFF;
+      border: 2px solid #0F291E;
+      border-radius: 16px;
+      padding: 15px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 120ms var(--ease-out), box-shadow 120ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .vc-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 3px 3px 0 #0F291E;
+      }
+    }
+
+    .vc-card.highlighted {
+      background: #FEF9C3;
+      box-shadow: 4px 4px 0 #0F291E;
+    }
+
+    .vc-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .vc-card-name {
+      font-family: "Rubik", sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #0F291E;
+      line-height: 1.15;
+    }
+
+    .vc-card-meta {
+      font-size: 12px;
+      color: #4B6B5C;
+      margin-top: 3px;
+    }
+
+    .vc-score-box {
+      padding: 5px 11px;
+      border-radius: 10px;
+      background: #0F291E;
+      color: #D9F99D;
+      font-family: "Rubik", sans-serif;
+      font-size: 19px;
+      font-weight: 700;
+      line-height: 1.1;
+      flex-shrink: 0;
+    }
+
+    .vc-score-box.pending {
+      background: #F4F7F2;
+      color: #0F291E;
+      border: 1.5px solid #0F291E;
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+
+    /* Dual horizontal progress bars */
+    .vc-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .vc-bar-row {
+      display: grid;
+      grid-template-columns: 32px 1fr 30px;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .vc-bar-track {
+      height: 8px;
+      border-radius: 999px;
+      background: #EAF0E7;
+      overflow: hidden;
+    }
+
+    .vc-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+    }
+
+    .vc-bar-fill.fer { background: #0D9488; }
+    .vc-bar-fill.juli { background: #EA580C; }
+
+    .vc-quote-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      background: #F4F7F2;
+      border-radius: 10px;
+      padding: 9px 11px;
+      font-size: 13px;
+      color: #1F3A2E;
+    }
+
+    /* Bottom sheet */
+    .vc-sheet-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 41, 30, 0.55);
+      backdrop-filter: blur(3px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 65;
+    }
+
+    .vc-sheet {
+      width: 100%;
+      max-width: 520px;
+      background: #FFFFFF;
+      color: #0F291E;
+      border-top: 2px solid #0F291E;
+      border-left: 2px solid #0F291E;
+      border-right: 2px solid #0F291E;
+      border-radius: 22px 22px 0 0;
+      padding: 12px 18px calc(24px + env(safe-area-inset-bottom, 0px));
+      max-height: 86%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .vc-handle {
+      width: 40px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(15, 41, 30, 0.22);
+      margin: 0 auto 14px;
+    }
+
+    .vc-tap-scores {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .vc-tap-num {
+      padding: 8px 4px;
+      border-radius: 10px;
+      border: 1.5px solid rgba(15, 41, 30, 0.2);
+      font-weight: 700;
+      font-size: 13px;
+      text-align: center;
+      background: #F4F7F2;
+    }
+
+    .vc-tap-num.fer[aria-pressed="true"] {
+      background: #0D9488;
+      border-color: #0D9488;
+      color: #FFFFFF;
+    }
+
+    .vc-tap-num.juli[aria-pressed="true"] {
+      background: #EA580C;
+      border-color: #EA580C;
+      color: #FFFFFF;
+    }
+
+    /* =====================================================================
+       PROTOTYPE SWITCHER (FLOATING BOTTOM BAR)
+       ===================================================================== */
+    .proto-switcher {
+      position: fixed;
+      left: 50%;
+      bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      z-index: 90;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px;
+      background: #111827;
+      color: #FFFFFF;
+      border: 1.5px solid rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+      font-family: "Plus Jakarta Sans", -apple-system, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      max-width: calc(100vw - 24px);
+    }
+
+    .proto-arrow {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #FFFFFF;
+      font-weight: 700;
+      transition: background 120ms ease, transform 100ms var(--ease-out);
+    }
+
+    .proto-arrow:active { transform: scale(0.93); }
+
+    @media (hover: hover) and (pointer: fine) {
+      .proto-arrow:hover { background: rgba(255, 255, 255, 0.14); }
+    }
+
+    .proto-label {
+      padding: 0 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .proto-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #FACC15;
+      color: #111827;
+      margin-right: 7px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body data-variant="A">
+  <div id="app"></div>
+
+  <nav class="proto-switcher" aria-label="Variantes del prototipo">
+    <button class="proto-arrow" id="proto-prev" type="button" aria-label="Variante anterior">←</button>
+    <span class="proto-label" id="proto-label"></span>
+    <button class="proto-arrow" id="proto-next" type="button" aria-label="Variante siguiente">→</button>
+  </nav>
+
+  <script>
+    (function () {
+      const VARIANTS = [
+        { key: "A", name: "Carta de bodegón", themeColor: "#FCFAF5" },
+        { key: "B", name: "Sobremesa nocturna", themeColor: "#110E14" },
+        { key: "C", name: "Guía de bolsillo", themeColor: "#F4F7F2" },
+      ];
+
+      const MEALS = ["Desayuno", "Almuerzo", "Merienda", "Cena"];
+
+      const state = {
+        variant: "A",
+        currentUser: "fer",
+        places: [
+          {
+            id: "la-dominga",
+            name: "La Dominga",
+            address: "Belgrano 412",
+            meals: ["Cena", "Almuerzo"],
+            fer: { score: 9.5, note: "" },
+            juli: { score: 9, note: "" },
+          },
+          {
+            id: "envero",
+            name: "Envero",
+            address: "Mitre 840",
+            meals: ["Cena"],
+            fer: { score: 9, note: "" },
+            juli: { score: 9, note: "" },
+          },
+          {
+            id: "mio-sabores",
+            name: "Mío Sabores",
+            address: "Sarmiento 295",
+            meals: ["Almuerzo", "Cena"],
+            fer: { score: 8, note: "" },
+            juli: { score: 8, note: "" },
+          },
+          {
+            id: "vito",
+            name: "Vito",
+            address: "San Martín 610",
+            meals: ["Cena", "Almuerzo"],
+            fer: { score: 8, note: "" },
+            juli: { score: 8, note: "" },
+          },
+          {
+            id: "la-liseria",
+            name: "La Lisería",
+            address: "Rivadavia 530",
+            meals: ["Almuerzo", "Cena"],
+            fer: { score: 7, note: "Bien la tabla 1 pero no muy rica la carne, las empanadas muy buenas" },
+            juli: { score: 7.5, note: "Muy buena la tabla 1" },
+          },
+          {
+            id: "verbena",
+            name: "Verbena",
+            address: "Güemes 185",
+            meals: ["Desayuno", "Merienda", "Almuerzo"],
+            fer: { score: 6.5, note: "" },
+            juli: { score: 7, note: "" },
+          },
+          {
+            id: "ariadna",
+            name: "Ariadna",
+            address: "25 de Mayo 720",
+            meals: ["Desayuno", "Merienda"],
+            fer: { score: 8, note: "" },
+            juli: { score: 5, note: "" },
+          },
+          {
+            id: "keik",
+            name: "Keik",
+            address: "España 310",
+            meals: ["Desayuno", "Merienda"],
+            fer: { score: 5, note: "" },
+            juli: { score: 6.5, note: "Café muy bueno, comida no" },
+          },
+          {
+            id: "cafe-iris",
+            name: "Café Iris",
+            address: "",
+            meals: ["Desayuno", "Merienda"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+          {
+            id: "troppo-napoletano",
+            name: "Troppo Napoletano",
+            address: "",
+            meals: ["Cena"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+          {
+            id: "fortis",
+            name: "Fortis",
+            address: "",
+            meals: ["Almuerzo", "Cena"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+          {
+            id: "el-nacional",
+            name: "El Nacional",
+            address: "",
+            meals: ["Almuerzo", "Cena"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+          {
+            id: "la-choperia",
+            name: "La Chopería",
+            address: "",
+            meals: ["Cena"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+          {
+            id: "rocca",
+            name: "Rocca",
+            address: "",
+            meals: ["Cena", "Merienda"],
+            fer: { score: null, note: "" },
+            juli: { score: null, note: "" },
+          },
+        ],
+
+        vaMeal: "all",
+        vaQuery: "",
+        vaSort: "avg",
+        vaExpandedId: "la-liseria",
+
+        vbMeal: "all",
+        vbQuery: "",
+        vbSelectedId: "la-liseria",
+        vbMobileView: "list",
+
+        vcMode: "ranking",
+        vcMeal: "all",
+        vcRandomPickId: "troppo-napoletano",
+        vcSheetPlaceId: null,
+
+        showAddModal: false,
+      };
+
+      function getAvg(p) {
+        const vals = [p.fer.score, p.juli.score].filter((v) => v !== null && v !== undefined);
+        if (!vals.length) return null;
+        return vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+
+      function getGap(p) {
+        if (p.fer.score === null || p.juli.score === null) return null;
+        return Math.abs(p.fer.score - p.juli.score);
+      }
+
+      function isPending(p) {
+        return p.fer.score === null && p.juli.score === null;
+      }
+
+      function fmtScore(v) {
+        if (v === null || v === undefined) return "Sin nota";
+        const r = Math.round(v * 10) / 10;
+        return Number.isInteger(r) ? String(r) : String(r).replace(".", ",");
+      }
+
+      function esc(str) {
+        return String(str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function mapsUrl(place) {
+        const q = place.address ? `${place.name}, ${place.address}` : place.name;
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+      }
+
+      function readVariantFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const v = (params.get("variant") || "A").toUpperCase();
+        return VARIANTS.some((item) => item.key === v) ? v : "A";
+      }
+
+      function setVariant(key) {
+        state.variant = key;
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set("variant", key);
+          window.history.replaceState({}, "", url.toString());
+        } catch (_) {}
+        render();
+      }
+
+      function stepVariant(delta) {
+        const idx = VARIANTS.findIndex((v) => v.key === state.variant);
+        const next = VARIANTS[(idx + delta + VARIANTS.length) % VARIANTS.length];
+        setVariant(next.key);
+      }
+
+      function adjustScore(placeId, who, delta) {
+        const p = state.places.find((x) => x.id === placeId);
+        if (!p) return;
+        const cur = p[who].score;
+        if (cur === null) {
+          p[who].score = delta > 0 ? 7.5 : 7;
+        } else {
+          p[who].score = Math.min(10, Math.max(1, Math.round((cur + delta) * 2) / 2));
+        }
+        render();
+      }
+
+      function setScore(placeId, who, raw) {
+        const p = state.places.find((x) => x.id === placeId);
+        if (!p) return;
+        const n = parseFloat(raw);
+        if (!Number.isNaN(n)) {
+          p[who].score = Math.min(10, Math.max(1, Math.round(n * 2) / 2));
+        }
+        render();
+      }
+
+      function mealMood(place) {
+        if (place.meals.includes("Desayuno") || place.meals.includes("Merienda")) {
+          return place.meals.includes("Cena") ? "mood-night" : "mood-cafe";
+        }
+        if (place.meals.includes("Almuerzo") && !place.meals.includes("Cena")) {
+          return "mood-lunch";
+        }
+        return "mood-night";
+      }
+
+      /* =====================================================================
+         VARIANT A: CARTA DE BODEGÓN
+         ===================================================================== */
+      function renderVariantA() {
+        const q = state.vaQuery.trim().toLowerCase();
+        const matches = (p) => {
+          if (state.vaMeal !== "all" && !p.meals.includes(state.vaMeal)) return false;
+          if (!q) return true;
+          return `${p.name} ${p.address} ${p.fer.note} ${p.juli.note}`.toLowerCase().includes(q);
+        };
+
+        const rated = state.places.filter((p) => !isPending(p) && matches(p));
+        const pending = state.places.filter((p) => isPending(p) && matches(p));
+
+        rated.sort((a, b) => {
+          if (state.vaSort === "fer") return (b.fer.score ?? 0) - (a.fer.score ?? 0);
+          if (state.vaSort === "juli") return (b.juli.score ?? 0) - (a.juli.score ?? 0);
+          if (state.vaSort === "gap") return (getGap(b) ?? 0) - (getGap(a) ?? 0);
+          return (getAvg(b) ?? 0) - (getAvg(a) ?? 0);
+        });
+
+        const topTwo = state.places
+          .filter((p) => !isPending(p))
+          .sort((a, b) => (getAvg(b) ?? 0) - (getAvg(a) ?? 0))
+          .slice(0, 2);
+
+        return `
+          <main class="va-page">
+            <header class="va-head">
+              <div>
+                <h1 class="va-title">Nuestra mesa</h1>
+                <div class="va-legend">
+                  <span><i class="va-dot fer"></i>Fer</span>
+                  <span><i class="va-dot juli"></i>Juli</span>
+                  <span class="tabular">${state.places.filter((p) => !isPending(p)).length} probados, ${state.places.filter(isPending).length} por conocer</span>
+                </div>
+              </div>
+              <button class="va-add-btn press" type="button" data-open-add>+ Sumar lugar</button>
+            </header>
+
+            ${!q && state.vaMeal === "all" ? `
+              <section class="va-specials" aria-label="Favoritos">
+                ${topTwo.map((p, idx) => `
+                  <button class="va-special-card press" type="button" data-va-toggle="${p.id}">
+                    <div>
+                      <span class="va-special-tag">${idx === 0 ? "Favorito actual" : "Empate perfecto"}</span>
+                      <div class="va-special-name">${esc(p.name)}</div>
+                      <div class="va-special-meta">${esc(p.meals.join(", "))}${p.address ? ` en ${esc(p.address)}` : ""}</div>
+                    </div>
+                    <div>
+                      <div class="va-special-score tabular">${fmtScore(getAvg(p))}</div>
+                      <div class="va-special-pair tabular">
+                        <span style="color:#1D4ED8">Fer ${fmtScore(p.fer.score)}</span>
+                        <span style="color:#BE123C">Juli ${fmtScore(p.juli.score)}</span>
+                      </div>
+                    </div>
+                  </button>
+                `).join("")}
+              </section>
+            ` : ""}
+
+            <div class="va-controls">
+              <div class="va-pills" role="group" aria-label="Filtrar por momento">
+                <button class="va-pill press" aria-pressed="${state.vaMeal === "all"}" data-va-meal="all">Todo el día</button>
+                ${MEALS.map((m) => `
+                  <button class="va-pill press" aria-pressed="${state.vaMeal === m}" data-va-meal="${m}">${m}</button>
+                `).join("")}
+              </div>
+
+              <div class="va-search-box">
+                <select class="va-sort" id="va-sort-select" aria-label="Ordenar">
+                  <option value="avg" ${state.vaSort === "avg" ? "selected" : ""}>Mejor promedio</option>
+                  <option value="fer" ${state.vaSort === "fer" ? "selected" : ""}>Favoritos de Fer</option>
+                  <option value="juli" ${state.vaSort === "juli" ? "selected" : ""}>Favoritos de Juli</option>
+                  <option value="gap" ${state.vaSort === "gap" ? "selected" : ""}>Más discutidos</option>
+                </select>
+                <input class="va-search" id="va-search-input" type="search" placeholder="Buscar lugar o plato..." value="${esc(state.vaQuery)}" />
+              </div>
+            </div>
+
+            <section class="va-list" aria-label="Lugares probados">
+              ${rated.map((p) => {
+                const avg = getAvg(p);
+                const gap = getGap(p);
+                const open = state.vaExpandedId === p.id;
+                return `
+                  <article class="va-entry">
+                    <button class="va-entry-btn" type="button" data-va-toggle="${p.id}" aria-expanded="${open}">
+                      <div>
+                        <div class="va-entry-head">
+                          <span class="va-entry-name">${esc(p.name)}</span>
+                          <span class="va-meal-chip">${esc(p.meals.join(" / "))}</span>
+                          ${p.address ? `<span class="va-entry-addr">${esc(p.address)}</span>` : ""}
+                          ${gap !== null && gap >= 2 ? `<span class="va-gap-chip tabular">${fmtScore(gap)} pts de diferencia</span>` : ""}
+                        </div>
+                        ${p.fer.note || p.juli.note ? `
+                          <div class="va-quotes">
+                            ${p.fer.note ? `<span class="va-q-fer"><strong>Fer:</strong> "${esc(p.fer.note)}"</span>` : ""}
+                            ${p.juli.note ? `<span class="va-q-juli"><strong>Juli:</strong> "${esc(p.juli.note)}"</span>` : ""}
+                          </div>
+                        ` : ""}
+                      </div>
+                      <div class="va-scores-right tabular">
+                        <span class="va-badge fer">${fmtScore(p.fer.score)}</span>
+                        <span class="va-badge juli">${fmtScore(p.juli.score)}</span>
+                        <span class="va-avg-stamp">${fmtScore(avg)}</span>
+                      </div>
+                    </button>
+
+                    ${open ? `
+                      <div class="va-drawer">
+                        <div class="va-drawer-bar">
+                          <input class="m-input" style="max-width:300px;background:#FFFFFF;" placeholder="Agregar dirección" value="${esc(p.address)}" data-addr-input="${p.id}" />
+                          <a class="va-maps-link press" href="${mapsUrl(p)}" target="_blank" rel="noreferrer">Abrir en Google Maps</a>
+                        </div>
+                        <div class="va-drawer-person fer">
+                          <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <strong style="color:#1D4ED8">Puntaje de Fer</strong>
+                            <div class="va-stepper">
+                              <button class="va-step-btn press" type="button" data-step="${p.id}:fer:-0.5">-</button>
+                              <span class="tabular" style="font-weight:800;min-width:32px;text-align:center;color:#1D4ED8">${fmtScore(p.fer.score)}</span>
+                              <button class="va-step-btn press" type="button" data-step="${p.id}:fer:0.5">+</button>
+                            </div>
+                          </div>
+                          <textarea class="va-note-area" placeholder="Qué pidió o qué le gustó a Fer..." data-note-input="${p.id}:fer">${esc(p.fer.note)}</textarea>
+                        </div>
+                        <div class="va-drawer-person juli">
+                          <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <strong style="color:#BE123C">Puntaje de Juli</strong>
+                            <div class="va-stepper">
+                              <button class="va-step-btn press" type="button" data-step="${p.id}:juli:-0.5">-</button>
+                              <span class="tabular" style="font-weight:800;min-width:32px;text-align:center;color:#BE123C">${fmtScore(p.juli.score)}</span>
+                              <button class="va-step-btn press" type="button" data-step="${p.id}:juli:0.5">+</button>
+                            </div>
+                          </div>
+                          <textarea class="va-note-area" placeholder="Qué pidió o qué le gustó a Juli..." data-note-input="${p.id}:juli">${esc(p.juli.note)}</textarea>
+                        </div>
+                      </div>
+                    ` : ""}
+                  </article>
+                `;
+              }).join("")}
+            </section>
+
+            ${pending.length ? `
+              <section class="va-wishlist" aria-label="Pendientes por probar">
+                <div class="va-wishlist-head">
+                  <h2 class="va-wishlist-title">Lista de antojos</h2>
+                  <span class="tabular" style="font-size:13px;color:#475569;font-weight:600;">${pending.length} pendientes</span>
+                </div>
+                <div class="va-wish-grid">
+                  ${pending.map((p) => `
+                    <button class="va-wish-tile press" type="button" data-va-rate-pending="${p.id}">
+                      <div>
+                        <div class="va-wish-name">${esc(p.name)}</div>
+                        <div class="va-wish-meal">${esc(p.meals.join(" / "))}</div>
+                      </div>
+                      <span class="va-wish-cta">Ya fuimos</span>
+                    </button>
+                  `).join("")}
+                </div>
+              </section>
+            ` : ""}
+          </main>
+        `;
+      }
+
+      /* =====================================================================
+         VARIANT B: SOBREMESA NOCTURNA
+         ===================================================================== */
+      function renderVariantB() {
+        const q = state.vbQuery.trim().toLowerCase();
+        const filtered = state.places
+          .filter((p) => {
+            if (state.vbMeal !== "all" && !p.meals.includes(state.vbMeal)) return false;
+            if (!q) return true;
+            return `${p.name} ${p.address} ${p.fer.note} ${p.juli.note}`.toLowerCase().includes(q);
+          })
+          .sort((a, b) => {
+            const pa = isPending(a);
+            const pb = isPending(b);
+            if (pa !== pb) return pa ? 1 : -1;
+            return (getAvg(b) ?? 0) - (getAvg(a) ?? 0);
+          });
+
+        const selected = state.places.find((p) => p.id === state.vbSelectedId) || filtered[0] || state.places[0];
+        const avg = getAvg(selected);
+        const gap = getGap(selected);
+        const ferPct = selected.fer.score !== null ? ((selected.fer.score - 1) / 9) * 100 : null;
+        const juliPct = selected.juli.score !== null ? ((selected.juli.score - 1) / 9) * 100 : null;
+        const spanLeft = ferPct !== null && juliPct !== null ? Math.min(ferPct, juliPct) : 0;
+        const spanWidth = ferPct !== null && juliPct !== null ? Math.abs(ferPct - juliPct) : 0;
+
+        let verdict = "Todavía sin puntuar";
+        if (gap !== null) {
+          if (gap === 0) verdict = "Coinciden exactamente";
+          else if (gap <= 0.5) verdict = "Casi el mismo veredicto";
+          else if (gap >= 2) verdict = `Acá hubo debate (${fmtScore(gap)} pts de diferencia)`;
+          else verdict = `Diferencia chica (${fmtScore(gap)} pts)`;
+        }
+
+        return `
+          <div class="vb-layout" data-mobile="${state.vbMobileView}">
+            <aside class="vb-sidebar">
+              <div class="vb-side-head">
+                <div class="vb-brand-row">
+                  <h1 class="vb-brand">Sobremesa</h1>
+                  <div class="vb-who" role="group" aria-label="Quién está puntuando">
+                    <button type="button" data-user="fer" data-persona="fer" aria-pressed="${state.currentUser === "fer"}">Fer</button>
+                    <button type="button" data-user="juli" data-persona="juli" aria-pressed="${state.currentUser === "juli"}">Juli</button>
+                  </div>
+                </div>
+                <div class="vb-side-search-row">
+                  <input class="vb-search" id="vb-search-input" type="search" placeholder="Buscar entre ${state.places.length} lugares..." value="${esc(state.vbQuery)}" />
+                  <button class="vb-add-btn press" type="button" data-open-add>+ Nuevo</button>
+                </div>
+                <div class="vb-filter-strip">
+                  <button class="vb-chip press" aria-pressed="${state.vbMeal === "all"}" data-vb-meal="all">Todos</button>
+                  ${MEALS.map((m) => `
+                    <button class="vb-chip press" aria-pressed="${state.vbMeal === m}" data-vb-meal="${m}">${m}</button>
+                  `).join("")}
+                </div>
+              </div>
+
+              <div class="vb-list">
+                ${filtered.map((p) => {
+                  const pAvg = getAvg(p);
+                  return `
+                    <button class="vb-row press" type="button" data-vb-select="${p.id}" aria-current="${p.id === selected.id}">
+                      <div style="min-width:0;">
+                        <div class="vb-row-name">${esc(p.name)}</div>
+                        <div class="vb-row-sub">${esc(p.meals.join(" / "))}${p.fer.note || p.juli.note ? ", con reseña" : ""}</div>
+                      </div>
+                      <div style="flex-shrink:0;">
+                        <div class="vb-row-score-pill tabular ${pAvg === null ? "pending" : ""}">
+                          ${pAvg !== null ? fmtScore(pAvg) : "Pendiente"}
+                        </div>
+                        ${pAvg !== null ? `
+                          <div class="vb-row-pair tabular">
+                            <span style="color:#38BDF8">${fmtScore(p.fer.score)}</span>
+                            <span style="color:#6E637C">/</span>
+                            <span style="color:#FB7185">${fmtScore(p.juli.score)}</span>
+                          </div>
+                        ` : ""}
+                      </div>
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+            </aside>
+
+            <main class="vb-stage">
+              <button class="vb-back-btn" type="button" data-vb-back>← Volver a la lista</button>
+
+              <section class="vb-banner ${mealMood(selected)}">
+                <div>
+                  <h2 class="vb-place-title">${esc(selected.name)}</h2>
+                  <div class="vb-banner-tags">
+                    ${selected.meals.map((m) => `<span class="vb-meal-badge">${esc(m)}</span>`).join("")}
+                    <span>${selected.address ? esc(selected.address) : "Dirección pendiente"}</span>
+                    <a class="vb-maps-pill press" href="${mapsUrl(selected)}" target="_blank" rel="noreferrer">Ver mapa</a>
+                  </div>
+                </div>
+                <div class="vb-score-hero">
+                  <div class="vb-score-giant tabular">${avg !== null ? fmtScore(avg) : "?"}</div>
+                  <div class="vb-score-caption">${avg !== null ? "Promedio de los dos" : "Aún no fueron"}</div>
+                </div>
+              </section>
+
+              <section class="vb-scale-box" aria-label="Comparativa de puntajes">
+                <div class="vb-scale-top">
+                  <span class="vb-scale-verdict">${verdict}</span>
+                  <span class="tabular">Escala 1 a 10</span>
+                </div>
+                <div class="vb-track-wrap">
+                  <div class="vb-track">
+                    ${ferPct !== null && juliPct !== null ? `
+                      <div class="vb-track-fill" style="left:${spanLeft}%;width:${Math.max(spanWidth, 1.5)}%;"></div>
+                    ` : ""}
+                    ${ferPct !== null ? `
+                      <div class="vb-pin" style="left:${ferPct}%">
+                        <span class="vb-pin-label top tabular">Fer ${fmtScore(selected.fer.score)}</span>
+                        <span class="vb-pin-dot fer"></span>
+                      </div>
+                    ` : ""}
+                    ${juliPct !== null ? `
+                      <div class="vb-pin" style="left:${juliPct}%">
+                        <span class="vb-pin-dot juli"></span>
+                        <span class="vb-pin-label bottom tabular">Juli ${fmtScore(selected.juli.score)}</span>
+                      </div>
+                    ` : ""}
+                  </div>
+                </div>
+                <div class="vb-ticks tabular">
+                  ${[1, 3, 5, 7, 9, 10].map((t) => `<span class="vb-tick" style="left:${((t - 1) / 9) * 100}%">${t}</span>`).join("")}
+                </div>
+              </section>
+
+              <section class="vb-panels">
+                <div class="vb-panel fer" data-mine="${state.currentUser === "fer"}">
+                  <div class="vb-panel-head">
+                    <span class="vb-avatar"><span class="vb-avatar-badge fer">F</span>Fer</span>
+                    <span class="vb-panel-num tabular" style="color:#38BDF8">${selected.fer.score !== null ? fmtScore(selected.fer.score) : "Sin nota"}</span>
+                  </div>
+                  <input class="vb-range fer" type="range" min="1" max="10" step="0.5"
+                    value="${selected.fer.score ?? 7.5}"
+                    data-range-score="${selected.id}:fer" />
+                  <textarea class="vb-notes" placeholder="Qué te pareció la comida, el lugar o qué volverías a pedir..."
+                    data-note-input="${selected.id}:fer">${esc(selected.fer.note)}</textarea>
+                </div>
+
+                <div class="vb-panel juli" data-mine="${state.currentUser === "juli"}">
+                  <div class="vb-panel-head">
+                    <span class="vb-avatar"><span class="vb-avatar-badge juli">J</span>Juli</span>
+                    <span class="vb-panel-num tabular" style="color:#FB7185">${selected.juli.score !== null ? fmtScore(selected.juli.score) : "Sin nota"}</span>
+                  </div>
+                  <input class="vb-range juli" type="range" min="1" max="10" step="0.5"
+                    value="${selected.juli.score ?? 7.5}"
+                    data-range-score="${selected.id}:juli" />
+                  <textarea class="vb-notes" placeholder="Qué te pareció la comida, el lugar o qué volverías a pedir..."
+                    data-note-input="${selected.id}:juli">${esc(selected.juli.note)}</textarea>
+                </div>
+              </section>
+
+              <div class="vb-addr-bar">
+                <input class="vb-addr-input" placeholder="Dirección del lugar (calle y altura)" value="${esc(selected.address)}" data-addr-input="${selected.id}" />
+                ${!isPending(selected) ? `<button class="vb-ghost-btn press" type="button" data-clear-scores="${selected.id}">Mover a pendientes</button>` : ""}
+              </div>
+            </main>
+          </div>
+        `;
+      }
+
+      /* =====================================================================
+         VARIANT C: GUÍA DE BOLSILLO
+         ===================================================================== */
+      function renderVariantC() {
+        const ratedCount = state.places.filter((p) => !isPending(p)).length;
+        const pendingCount = state.places.length - ratedCount;
+
+        let list = state.places.filter((p) =>
+          state.vcMeal === "all" ? true : p.meals.includes(state.vcMeal)
+        );
+
+        if (state.vcMode === "ranking") {
+          list = list.filter((p) => !isPending(p)).sort((a, b) => (getAvg(b) ?? 0) - (getAvg(a) ?? 0));
+        } else if (state.vcMode === "pending") {
+          list = list.filter((p) => isPending(p));
+        } else {
+          list = list.filter((p) => getGap(p) !== null).sort((a, b) => (getGap(b) ?? 0) - (getGap(a) ?? 0));
+        }
+
+        const picked = state.places.find((p) => p.id === state.vcRandomPickId);
+        const sheetPlace = state.vcSheetPlaceId ? state.places.find((p) => p.id === state.vcSheetPlaceId) : null;
+        const quickScores = [5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+
+        return `
+          <main class="vc-shell">
+            <header class="vc-top">
+              <h1 class="vc-logo">¿Dónde comemos?</h1>
+              <div class="vc-top-right">
+                <div class="vc-who-toggle" role="group" aria-label="Persona activa">
+                  <button type="button" data-user="fer" data-persona="fer" aria-pressed="${state.currentUser === "fer"}">Fer</button>
+                  <button type="button" data-user="juli" data-persona="juli" aria-pressed="${state.currentUser === "juli"}">Juli</button>
+                </div>
+                <button class="vc-add-btn press" type="button" data-open-add>+ Sumar</button>
+              </div>
+            </header>
+
+            <section class="vc-roulette">
+              <div>
+                <div class="vc-roulette-title">
+                  ${picked && isPending(picked) ? `Próxima salida: ${esc(picked.name)}` : "Sortear lugar pendiente"}
+                </div>
+                <div class="vc-roulette-sub">
+                  ${picked && isPending(picked) ? esc(picked.meals.join(" o ")) : `${pendingCount} lugares esperando en la lista`}
+                </div>
+              </div>
+              <button class="vc-spin-btn press" type="button" data-vc-random>Otro al azar</button>
+            </section>
+
+            <div class="vc-modes" role="tablist">
+              <button class="vc-mode-btn press" role="tab" aria-selected="${state.vcMode === "ranking"}" data-vc-mode="ranking">Top (${ratedCount})</button>
+              <button class="vc-mode-btn press" role="tab" aria-selected="${state.vcMode === "pending"}" data-vc-mode="pending">Pendientes (${pendingCount})</button>
+              <button class="vc-mode-btn press" role="tab" aria-selected="${state.vcMode === "gap"}" data-vc-mode="gap">Polémicos</button>
+            </div>
+
+            <div class="vc-meals">
+              <button class="vc-meal-pill press" aria-pressed="${state.vcMeal === "all"}" data-vc-meal="all">Todo</button>
+              ${MEALS.map((m) => `
+                <button class="vc-meal-pill press" aria-pressed="${state.vcMeal === m}" data-vc-meal="${m}">${m}</button>
+              `).join("")}
+            </div>
+
+            <section class="vc-cards">
+              ${list.map((p) => {
+                const avg = getAvg(p);
+                const gap = getGap(p);
+                const isHighlighted = state.vcMode === "pending" && p.id === state.vcRandomPickId;
+                return `
+                  <button class="vc-card press ${isHighlighted ? "highlighted" : ""}" type="button" data-vc-open="${p.id}">
+                    <div class="vc-card-top">
+                      <div>
+                        <div class="vc-card-name">${esc(p.name)}</div>
+                        <div class="vc-card-meta">${esc(p.meals.join(" / "))}${p.address ? ` en ${esc(p.address)}` : ""}</div>
+                      </div>
+                      <span class="vc-score-box tabular ${avg === null ? "pending" : ""}">
+                        ${state.vcMode === "gap" && gap !== null ? `${fmtScore(gap)} diff` : (avg !== null ? fmtScore(avg) : "Puntuar")}
+                      </span>
+                    </div>
+
+                    ${avg !== null ? `
+                      <div class="vc-bars tabular">
+                        <div class="vc-bar-row">
+                          <span style="color:#0D9488">Fer</span>
+                          <div class="vc-bar-track"><div class="vc-bar-fill fer" style="width:${(p.fer.score ?? 0) * 10}%"></div></div>
+                          <span style="text-align:right;color:#0D9488">${fmtScore(p.fer.score)}</span>
+                        </div>
+                        <div class="vc-bar-row">
+                          <span style="color:#EA580C">Juli</span>
+                          <div class="vc-bar-track"><div class="vc-bar-fill juli" style="width:${(p.juli.score ?? 0) * 10}%"></div></div>
+                          <span style="text-align:right;color:#EA580C">${fmtScore(p.juli.score)}</span>
+                        </div>
+                      </div>
+                    ` : ""}
+
+                    ${p.fer.note || p.juli.note ? `
+                      <div class="vc-quote-stack">
+                        ${p.fer.note ? `<div><strong style="color:#0D9488">Fer:</strong> ${esc(p.fer.note)}</div>` : ""}
+                        ${p.juli.note ? `<div><strong style="color:#EA580C">Juli:</strong> ${esc(p.juli.note)}</div>` : ""}
+                      </div>
+                    ` : ""}
+                  </button>
+                `;
+              }).join("")}
+              ${!list.length ? `<p style="padding:24px 0;color:#4B6B5C;">No hay lugares para este momento.</p>` : ""}
+            </section>
+          </main>
+
+          ${sheetPlace ? `
+            <div class="vc-sheet-bg" data-vc-close-sheet>
+              <div class="vc-sheet" role="dialog" aria-modal="true" aria-label="${esc(sheetPlace.name)}">
+                <div class="vc-handle"></div>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
+                  <div>
+                    <h2 style="margin:0;font-family:'Rubik',sans-serif;font-size:22px;">${esc(sheetPlace.name)}</h2>
+                    <div style="font-size:13px;color:#4B6B5C;margin-top:2px;">${esc(sheetPlace.meals.join(", "))}</div>
+                  </div>
+                  <a class="va-maps-link press" style="border-color:#0F291E;color:#0F291E;" href="${mapsUrl(sheetPlace)}" target="_blank" rel="noreferrer">Ver mapa</a>
+                </div>
+
+                <div class="m-field">
+                  <label>Dirección</label>
+                  <input class="m-input" placeholder="Calle y altura" value="${esc(sheetPlace.address)}" data-addr-input="${sheetPlace.id}" />
+                </div>
+
+                <div class="m-field">
+                  <label style="color:#0D9488;">Puntaje de Fer (${sheetPlace.fer.score !== null ? fmtScore(sheetPlace.fer.score) : "pendiente"})</label>
+                  <div class="vc-tap-scores tabular">
+                    ${quickScores.map((n) => `
+                      <button class="vc-tap-num fer press" type="button" aria-pressed="${sheetPlace.fer.score === n}" data-set-score="${sheetPlace.id}:fer:${n}">${fmtScore(n)}</button>
+                    `).join("")}
+                  </div>
+                </div>
+
+                <div class="m-field">
+                  <label style="color:#EA580C;">Puntaje de Juli (${sheetPlace.juli.score !== null ? fmtScore(sheetPlace.juli.score) : "pendiente"})</label>
+                  <div class="vc-tap-scores tabular">
+                    ${quickScores.map((n) => `
+                      <button class="vc-tap-num juli press" type="button" aria-pressed="${sheetPlace.juli.score === n}" data-set-score="${sheetPlace.id}:juli:${n}">${fmtScore(n)}</button>
+                    `).join("")}
+                  </div>
+                </div>
+
+                <div class="m-field">
+                  <label style="color:#0D9488;">Nota de Fer</label>
+                  <textarea class="m-input" rows="2" placeholder="Escribir nota..." data-note-input="${sheetPlace.id}:fer">${esc(sheetPlace.fer.note)}</textarea>
+                </div>
+
+                <div class="m-field">
+                  <label style="color:#EA580C;">Nota de Juli</label>
+                  <textarea class="m-input" rows="2" placeholder="Escribir nota..." data-note-input="${sheetPlace.id}:juli">${esc(sheetPlace.juli.note)}</textarea>
+                </div>
+
+                <button class="m-submit press" type="button" data-vc-close-btn>Guardar y cerrar</button>
+              </div>
+            </div>
+          ` : ""}
+        `;
+      }
+
+      function renderAddModal() {
+        if (!state.showAddModal) return "";
+        return `
+          <div class="modal-backdrop" data-close-add>
+            <form class="modal-card" id="add-place-form">
+              <div class="modal-head">
+                <h2 class="modal-title">Sumar un lugar</h2>
+                <button type="button" style="font-weight:700;opacity:0.7;" data-close-add-btn>Cerrar</button>
+              </div>
+              <div class="m-field">
+                <label for="new-name">Nombre del lugar</label>
+                <input class="m-input" id="new-name" name="name" required placeholder="Ej. Café del Centro" />
+              </div>
+              <div class="m-field">
+                <label for="new-address">Dirección</label>
+                <input class="m-input" id="new-address" name="address" placeholder="Calle y altura (opcional)" />
+              </div>
+              <div class="m-field">
+                <label>Momentos</label>
+                <div class="m-meals">
+                  ${MEALS.map((m, i) => `
+                    <button class="m-meal-btn press" type="button" data-new-meal="${m}" aria-pressed="${i === 3}"><span>${m}</span></button>
+                  `).join("")}
+                </div>
+              </div>
+              <div class="m-grid-2">
+                <div class="m-field">
+                  <label for="new-fer">Puntaje Fer (1 a 10)</label>
+                  <input class="m-input tabular" id="new-fer" name="ferScore" type="number" min="1" max="10" step="0.5" inputmode="decimal" placeholder="Pendiente" />
+                </div>
+                <div class="m-field">
+                  <label for="new-juli">Puntaje Juli (1 a 10)</label>
+                  <input class="m-input tabular" id="new-juli" name="juliScore" type="number" min="1" max="10" step="0.5" inputmode="decimal" placeholder="Pendiente" />
+                </div>
+              </div>
+              <div class="m-field">
+                <label for="new-note">Reseña inicial</label>
+                <textarea class="m-input" id="new-note" name="note" rows="2" placeholder="Opcional"></textarea>
+              </div>
+              <button class="m-submit press" type="submit">Guardar lugar</button>
+            </form>
+          </div>
+        `;
+      }
+
+      function render() {
+        const current = VARIANTS.find((v) => v.key === state.variant);
+        document.body.dataset.variant = state.variant;
+        const meta = document.getElementById("meta-theme-color");
+        if (meta) meta.setAttribute("content", current.themeColor);
+
+        const app = document.getElementById("app");
+        let html = "";
+        if (state.variant === "A") html = renderVariantA();
+        else if (state.variant === "B") html = renderVariantB();
+        else html = renderVariantC();
+
+        app.innerHTML = html + renderAddModal();
+
+        document.getElementById("proto-label").innerHTML =
+          `<span class="proto-badge">${current.key}</span>${current.name}`;
+
+        bindEvents();
+      }
+
+      function bindEvents() {
+        // Variant A
+        document.querySelectorAll("[data-va-meal]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vaMeal = el.dataset.vaMeal;
+            render();
+          });
+        });
+
+        const vaSort = document.getElementById("va-sort-select");
+        if (vaSort) {
+          vaSort.addEventListener("change", (e) => {
+            state.vaSort = e.target.value;
+            render();
+          });
+        }
+
+        const vaSearch = document.getElementById("va-search-input");
+        if (vaSearch) {
+          vaSearch.addEventListener("input", (e) => {
+            state.vaQuery = e.target.value;
+            render();
+            const again = document.getElementById("va-search-input");
+            if (again) {
+              again.focus();
+              again.setSelectionRange(again.value.length, again.value.length);
+            }
+          });
+        }
+
+        document.querySelectorAll("[data-va-toggle]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const id = el.dataset.vaToggle;
+            state.vaExpandedId = state.vaExpandedId === id ? null : id;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-va-rate-pending]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const p = state.places.find((x) => x.id === el.dataset.vaRatePending);
+            if (!p) return;
+            p.fer.score = 8;
+            p.juli.score = 8;
+            state.vaExpandedId = p.id;
+            render();
+          });
+        });
+
+        // Variant B
+        document.querySelectorAll("[data-vb-meal]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vbMeal = el.dataset.vbMeal;
+            render();
+          });
+        });
+
+        const vbSearch = document.getElementById("vb-search-input");
+        if (vbSearch) {
+          vbSearch.addEventListener("input", (e) => {
+            state.vbQuery = e.target.value;
+            render();
+            const again = document.getElementById("vb-search-input");
+            if (again) {
+              again.focus();
+              again.setSelectionRange(again.value.length, again.value.length);
+            }
+          });
+        }
+
+        document.querySelectorAll("[data-vb-select]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vbSelectedId = el.dataset.vbSelect;
+            state.vbMobileView = "detail";
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-vb-back]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vbMobileView = "list";
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-range-score]").forEach((el) => {
+          el.addEventListener("input", (e) => {
+            const [id, who] = el.dataset.rangeScore.split(":");
+            setScore(id, who, e.target.value);
+          });
+        });
+
+        document.querySelectorAll("[data-clear-scores]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const p = state.places.find((x) => x.id === el.dataset.clearScores);
+            if (p) {
+              p.fer.score = null;
+              p.juli.score = null;
+              render();
+            }
+          });
+        });
+
+        // Variant C
+        document.querySelectorAll("[data-vc-mode]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vcMode = el.dataset.vcMode;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-vc-meal]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vcMeal = el.dataset.vcMeal;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-vc-random]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const pool = state.places.filter(isPending);
+            if (!pool.length) return;
+            const others = pool.filter((p) => p.id !== state.vcRandomPickId);
+            const list = others.length ? others : pool;
+            state.vcRandomPickId = list[Math.floor(Math.random() * list.length)].id;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-vc-open]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vcSheetPlaceId = el.dataset.vcOpen;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-vc-close-sheet]").forEach((el) => {
+          el.addEventListener("click", (e) => {
+            if (e.target === el) {
+              state.vcSheetPlaceId = null;
+              render();
+            }
+          });
+        });
+
+        document.querySelectorAll("[data-vc-close-btn]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.vcSheetPlaceId = null;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-set-score]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const [id, who, val] = el.dataset.setScore.split(":");
+            setScore(id, who, val);
+          });
+        });
+
+        // Shared
+        document.querySelectorAll("[data-persona]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.currentUser = el.dataset.persona;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-step]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const [id, who, d] = el.dataset.step.split(":");
+            adjustScore(id, who, parseFloat(d));
+          });
+        });
+
+        document.querySelectorAll("[data-note-input]").forEach((el) => {
+          el.addEventListener("input", (e) => {
+            const [id, who] = el.dataset.noteInput.split(":");
+            const p = state.places.find((x) => x.id === id);
+            if (p) p[who].note = e.target.value;
+          });
+        });
+
+        document.querySelectorAll("[data-addr-input]").forEach((el) => {
+          el.addEventListener("input", (e) => {
+            const p = state.places.find((x) => x.id === el.dataset.addrInput);
+            if (p) p.address = e.target.value;
+          });
+        });
+
+        document.querySelectorAll("[data-open-add]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.showAddModal = true;
+            render();
+            const first = document.getElementById("new-name");
+            if (first) first.focus();
+          });
+        });
+
+        document.querySelectorAll("[data-close-add]").forEach((el) => {
+          el.addEventListener("click", (e) => {
+            if (e.target === el) {
+              state.showAddModal = false;
+              render();
+            }
+          });
+        });
+
+        document.querySelectorAll("[data-close-add-btn]").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.showAddModal = false;
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-new-meal]").forEach((el) => {
+          el.addEventListener("click", () => {
+            const next = el.getAttribute("aria-pressed") !== "true";
+            el.setAttribute("aria-pressed", String(next));
+          });
+        });
+
+        const addForm = document.getElementById("add-place-form");
+        if (addForm) {
+          addForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const fd = new FormData(addForm);
+            const name = String(fd.get("name") || "").trim();
+            if (!name) return;
+            const selectedMeals = Array.from(addForm.querySelectorAll('[data-new-meal][aria-pressed="true"]')).map(
+              (btn) => btn.dataset.newMeal
+            );
+            const ferRaw = String(fd.get("ferScore") || "").trim();
+            const juliRaw = String(fd.get("juliScore") || "").trim();
+            const note = String(fd.get("note") || "").trim();
+            const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Date.now();
+
+            state.places.unshift({
+              id,
+              name,
+              address: String(fd.get("address") || "").trim(),
+              meals: selectedMeals.length ? selectedMeals : ["Cena"],
+              fer: {
+                score: ferRaw ? Math.min(10, Math.max(1, parseFloat(ferRaw))) : null,
+                note: state.currentUser === "fer" ? note : "",
+              },
+              juli: {
+                score: juliRaw ? Math.min(10, Math.max(1, parseFloat(juliRaw))) : null,
+                note: state.currentUser === "juli" ? note : "",
+              },
+            });
+
+            state.showAddModal = false;
+            state.vaExpandedId = id;
+            state.vbSelectedId = id;
+            render();
+          });
+        }
+      }
+
+      document.getElementById("proto-prev").addEventListener("click", () => stepVariant(-1));
+      document.getElementById("proto-next").addEventListener("click", () => stepVariant(1));
+
+      document.addEventListener("keydown", (e) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || document.activeElement?.isContentEditable) {
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          stepVariant(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          stepVariant(1);
+        } else if (e.key === "Escape") {
+          if (state.showAddModal) {
+            state.showAddModal = false;
+            render();
+          } else if (state.vcSheetPlaceId) {
+            state.vcSheetPlaceId = null;
+            render();
+          }
+        }
+      });
+
+      state.variant = readVariantFromUrl();
+      render();
+    })();
+  </script>
+</body>
+</html>

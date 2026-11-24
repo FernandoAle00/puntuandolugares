@@ -135,6 +135,7 @@ export interface GroupMemberSummary extends UserSummary {
 export interface GroupSummary {
   id: string;
   name: string;
+  isPersonal: boolean;
   members: GroupMemberSummary[];
 }
 

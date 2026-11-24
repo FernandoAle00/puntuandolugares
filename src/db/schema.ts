@@ -92,6 +92,7 @@ export const friendship = sqliteTable(
 export const foodGroup = sqliteTable("food_group", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  isPersonal: integer("is_personal", { mode: "boolean" }).notNull().default(false),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

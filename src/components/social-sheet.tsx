@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Plus, UserPlus, Users, X } from "lucide-react";
+import { Check, Plus, User, UserPlus, Users, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { accentCssVar } from "@/components/place-sheet";
 import type { GroupSummary, SocialSnapshot } from "@/lib/domain";
@@ -178,7 +178,7 @@ export function SocialSheet({
   }
 
   async function handleAddMember(userId: string) {
-    if (!activeGroup) return;
+    if (!activeGroup || activeGroup.isPersonal) return;
     setBusy(true);
     setFeedback(null);
     try {
@@ -445,46 +445,60 @@ export function SocialSheet({
                 className="flex flex-col gap-2.5 rounded-2xl border-2 p-3.5"
                 style={{ borderColor: "var(--border)", backgroundColor: "var(--bg)" }}
               >
-                <div className="font-display text-[16px] font-bold">
-                  Grupo actual: {activeGroup.name}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {activeGroup.members.map((m) => (
-                    <span
-                      key={m.id}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-bold"
-                      style={{ backgroundColor: "var(--surface-soft)" }}
-                    >
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: accentCssVar(m.accentColor) }}
-                      />
-                      {m.name}
-                    </span>
-                  ))}
-                </div>
-
-                {friendsNotInActiveGroup.length > 0 && (
-                  <div className="mt-1 flex flex-col gap-1.5">
-                    <div className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
-                      Sumar a este grupo
+                {activeGroup.isPersonal ? (
+                  <>
+                    <div className="font-display flex items-center gap-1.5 text-[16px] font-bold">
+                      <User className="h-4 w-4" aria-hidden="true" />
+                      {activeGroup.name}
+                    </div>
+                    <p className="m-0 text-[13px]" style={{ color: "var(--fg-muted)" }}>
+                      Esta lista es personal y solo la ves vos. Creá un grupo compartido abajo para sumar amigos.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-display text-[16px] font-bold">
+                      Grupo actual: {activeGroup.name}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {friendsNotInActiveGroup.map((f) => (
-                        <button
-                          key={f.user.id}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleAddMember(f.user.id)}
-                          className="pressable inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-[12px] font-bold"
-                          style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
+                      {activeGroup.members.map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-bold"
+                          style={{ backgroundColor: "var(--surface-soft)" }}
                         >
-                          <Plus className="h-3 w-3" />
-                          {f.user.name}
-                        </button>
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: accentCssVar(m.accentColor) }}
+                          />
+                          {m.name}
+                        </span>
                       ))}
                     </div>
-                  </div>
+
+                    {friendsNotInActiveGroup.length > 0 && (
+                      <div className="mt-1 flex flex-col gap-1.5">
+                        <div className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+                          Sumar a este grupo
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {friendsNotInActiveGroup.map((f) => (
+                            <button
+                              key={f.user.id}
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleAddMember(f.user.id)}
+                              className="pressable inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-[12px] font-bold"
+                              style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
+                            >
+                              <Plus className="h-3 w-3" />
+                              {f.user.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

@@ -7,6 +7,7 @@ import {
   Plus,
   Search,
   ShoppingBag,
+  User,
   Users,
   Utensils,
   X,
@@ -82,6 +83,11 @@ export function PocketGuide({
     [groups, activeGroupId],
   );
 
+  const showGapTab = Boolean(
+    activeGroup && !activeGroup.isPersonal && activeGroup.members.length >= 2,
+  );
+  const effectiveMode: ViewMode = !showGapTab && mode === "gap" ? "ranking" : mode;
+
   const groupPlaces = useMemo(
     () => (activeGroupId ? places.filter((p) => p.groupId === activeGroupId) : []),
     [places, activeGroupId],
@@ -109,8 +115,8 @@ export function PocketGuide({
   );
 
   const visiblePlaces = useMemo(
-    () => filterAndSortPlaces(groupPlaces, { mode, meal, serviceType, query }),
-    [groupPlaces, mode, meal, serviceType, query],
+    () => filterAndSortPlaces(groupPlaces, { mode: effectiveMode, meal, serviceType, query }),
+    [groupPlaces, effectiveMode, meal, serviceType, query],
   );
 
   const pickScopeKey = activeGroupId ? `${activeGroupId}:${serviceType}` : null;
@@ -152,9 +158,21 @@ export function PocketGuide({
     setPlaces((prev) => prev.filter((p) => p.id !== placeId));
   }
 
+  function handleSelectGroup(group: GroupSummary) {
+    setActiveGroupId(group.id);
+    if ((group.isPersonal || group.members.length < 2) && mode === "gap") {
+      setMode("ranking");
+    }
+  }
+
   function handleGroupCreated(created: GroupSummary) {
-    setGroups((prev) => [...prev, created]);
+    setGroups((prev) =>
+      [...prev, created].sort((a, b) => Number(a.isPersonal) - Number(b.isPersonal)),
+    );
     setActiveGroupId(created.id);
+    if ((created.isPersonal || created.members.length < 2) && mode === "gap") {
+      setMode("ranking");
+    }
     setSocialModal((prev) => ({ ...prev, open: false }));
   }
 
@@ -265,7 +283,7 @@ export function PocketGuide({
                 key={g.id}
                 type="button"
                 aria-pressed={isCurrent}
-                onClick={() => setActiveGroupId(g.id)}
+                onClick={() => handleSelectGroup(g)}
                 className="pressable inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1 text-[12px] font-bold"
                 style={{
                   borderColor: isCurrent ? "var(--border)" : "var(--border-soft)",
@@ -273,8 +291,11 @@ export function PocketGuide({
                   color: "var(--fg)",
                 }}
               >
+                {g.isPersonal && <User className="h-3.5 w-3.5" aria-hidden="true" />}
                 <span>{g.name}</span>
-                <span className="tabular opacity-65">({g.members.length})</span>
+                {!g.isPersonal && (
+                  <span className="tabular opacity-65">({g.members.length})</span>
+                )}
               </button>
             );
           })}
@@ -444,15 +465,22 @@ export function PocketGuide({
           </section>
 
           {/* View Mode Tabs */}
-          <div className="mb-3 grid grid-cols-3 gap-2" role="tablist">
-            {(
-              [
-                { key: "ranking", label: `Top (${ratedCount})` },
-                { key: "pending", label: `Pendientes (${pendingCount})` },
-                { key: "gap", label: `Polémicos (${gapCount})` },
-              ] as const
+          <div
+            className={`mb-3 grid gap-2 ${showGapTab ? "grid-cols-3" : "grid-cols-2"}`}
+            role="tablist"
+          >
+            {(showGapTab
+              ? ([
+                  { key: "ranking", label: `Top (${ratedCount})` },
+                  { key: "pending", label: `Pendientes (${pendingCount})` },
+                  { key: "gap", label: `Polémicos (${gapCount})` },
+                ] as const)
+              : ([
+                  { key: "ranking", label: `Top (${ratedCount})` },
+                  { key: "pending", label: `Pendientes (${pendingCount})` },
+                ] as const)
             ).map((tab) => {
-              const active = mode === tab.key;
+              const active = effectiveMode === tab.key;
               return (
                 <button
                   key={tab.key}
@@ -512,7 +540,7 @@ export function PocketGuide({
             {visiblePlaces.map((place) => {
               const avg = computeAverage(place.ratings);
               const gap = computeGap(place.ratings);
-              const isHighlighted = mode === "pending" && pickedPlace?.id === place.id;
+              const isHighlighted = effectiveMode === "pending" && pickedPlace?.id === place.id;
               const notes = place.ratings.filter((r) => r.note.trim().length > 0);
 
               return (
@@ -569,7 +597,7 @@ export function PocketGuide({
                           color: "var(--badge-fg)",
                         }}
                       >
-                        {mode === "gap" && gap !== null
+                        {effectiveMode === "gap" && gap !== null
                           ? `${formatScore(gap)} diff`
                           : formatScore(avg)}
                       </span>

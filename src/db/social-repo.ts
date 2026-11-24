@@ -206,7 +206,59 @@ export async function removeFriendship(
 }
 
 /**
+ * Ensures the user has a personal rating list ("Mi lista") and returns its group ID.
+ */
+export async function ensurePersonalGroup(userId: string): Promise<string> {
+  const [existing] = await db
+    .select({ id: foodGroup.id })
+    .from(groupMember)
+    .innerJoin(foodGroup, eq(groupMember.groupId, foodGroup.id))
+    .where(and(eq(groupMember.userId, userId), eq(foodGroup.isPersonal, true)))
+    .limit(1);
+
+  if (existing) {
+    return existing.id;
+  }
+
+  const now = new Date();
+  const groupId = crypto.randomUUID();
+
+  return db.transaction(async (tx) => {
+    const [inTxExisting] = await tx
+      .select({ id: foodGroup.id })
+      .from(groupMember)
+      .innerJoin(foodGroup, eq(groupMember.groupId, foodGroup.id))
+      .where(and(eq(groupMember.userId, userId), eq(foodGroup.isPersonal, true)))
+      .limit(1);
+
+    if (inTxExisting) {
+      return inTxExisting.id;
+    }
+
+    await tx.insert(foodGroup).values({
+      id: groupId,
+      name: "Mi lista",
+      isPersonal: true,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await tx.insert(groupMember).values({
+      id: crypto.randomUUID(),
+      groupId,
+      userId,
+      role: "owner",
+      joinedAt: now,
+    });
+
+    return groupId;
+  });
+}
+
+/**
  * Lists all rating groups the user belongs to, along with each group's members.
+ * Shared groups appear before the user's personal list.
  */
 export async function listGroupsForUser(userId: string): Promise<GroupSummary[]> {
   const myMemberships = await db
@@ -222,7 +274,7 @@ export async function listGroupsForUser(userId: string): Promise<GroupSummary[]>
       .select()
       .from(foodGroup)
       .where(inArray(foodGroup.id, groupIds))
-      .orderBy(asc(foodGroup.createdAt)),
+      .orderBy(asc(foodGroup.isPersonal), asc(foodGroup.createdAt)),
     db
       .select({
         groupId: groupMember.groupId,
@@ -257,6 +309,7 @@ export async function listGroupsForUser(userId: string): Promise<GroupSummary[]>
   return groups.map((g) => ({
     id: g.id,
     name: g.name,
+    isPersonal: g.isPersonal,
     members: (membersByGroup.get(g.id) ?? []).sort((a, b) =>
       a.name.localeCompare(b.name, "es"),
     ),
@@ -331,13 +384,22 @@ export async function addFriendToGroup(
   { status: "ok"; group: GroupSummary } | { status: "error"; message: string; httpStatus: number }
 > {
   const [callerMembership] = await db
-    .select({ id: groupMember.id })
+    .select({ id: groupMember.id, isPersonal: foodGroup.isPersonal })
     .from(groupMember)
+    .innerJoin(foodGroup, eq(groupMember.groupId, foodGroup.id))
     .where(and(eq(groupMember.groupId, groupId), eq(groupMember.userId, callerId)))
     .limit(1);
 
   if (!callerMembership) {
     return { status: "error", message: "No tenés acceso a este grupo", httpStatus: 403 };
+  }
+
+  if (callerMembership.isPersonal) {
+    return {
+      status: "error",
+      message: "Tu lista personal es solo tuya. Creá un grupo compartido para sumar amigos.",
+      httpStatus: 400,
+    };
   }
 
   const friends = await areAcceptedFriends(callerId, friendUserId);

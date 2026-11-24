@@ -2,7 +2,7 @@ import { AuthScreen } from "@/components/auth-screen";
 import { PocketGuide } from "@/components/pocket-guide";
 import { listPlacesForUser } from "@/db/places-repo";
 import type { AccentColor } from "@/db/schema";
-import { getSocialSnapshot, listGroupsForUser } from "@/db/social-repo";
+import { ensurePersonalGroup, getSocialSnapshot, listGroupsForUser } from "@/db/social-repo";
 import { isGoogleAuthEnabled } from "@/lib/auth";
 import { getServerSession } from "@/lib/session";
 
@@ -26,6 +26,8 @@ export default async function HomePage() {
       />
     );
   }
+
+  await ensurePersonalGroup(session.user.id);
 
   const [groups, places, social] = await Promise.all([
     listGroupsForUser(session.user.id),

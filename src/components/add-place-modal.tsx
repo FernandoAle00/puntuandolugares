@@ -1,11 +1,13 @@
 "use client";
 
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Utensils, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import type { MealType } from "@/db/schema";
+import type { MealType, ServiceType } from "@/db/schema";
 import {
   MEAL_LABELS,
   MEALS,
+  SERVICE_LABELS,
+  SERVICE_TYPES,
   type PlaceWithRatings,
 } from "@/lib/domain";
 
@@ -13,6 +15,7 @@ interface AddPlaceModalProps {
   open: boolean;
   groupId: string | null;
   groupName: string;
+  defaultServiceType: ServiceType;
   onClose: () => void;
   onCreated: (place: PlaceWithRatings) => void;
 }
@@ -21,17 +24,25 @@ export function AddPlaceModal({
   open,
   groupId,
   groupName,
+  defaultServiceType,
   onClose,
   onCreated,
 }: AddPlaceModalProps) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [serviceType, setServiceType] = useState<ServiceType>(defaultServiceType);
   const [meals, setMeals] = useState<MealType[]>(["cena"]);
   const [rateNow, setRateNow] = useState(false);
   const [score, setScore] = useState(8);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setServiceType(defaultServiceType);
+    }
+  }, [open, defaultServiceType]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +89,7 @@ export function AddPlaceModal({
           groupId,
           name,
           address,
+          serviceType,
           meals,
           ...(rateNow ? { initialRating: { score, note } } : {}),
         }),
@@ -97,6 +109,7 @@ export function AddPlaceModal({
       onCreated(data.place);
       setName("");
       setAddress("");
+      setServiceType(defaultServiceType);
       setMeals(["cena"]);
       setRateNow(false);
       setScore(8);
@@ -152,6 +165,39 @@ export function AddPlaceModal({
 
         <div className="flex flex-col gap-3.5">
           <div className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+              Apartado
+            </span>
+            <div
+              className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-2 sm:grid-cols-2"
+              role="group"
+              aria-label="Tipo de lugar"
+            >
+              {SERVICE_TYPES.map((type) => {
+                const active = serviceType === type;
+                const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setServiceType(type)}
+                    className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl border-2 px-2.5 py-2 text-[12px] font-bold whitespace-nowrap sm:text-[13px]"
+                    style={{
+                      borderColor: active ? "var(--border)" : "var(--border-soft)",
+                      backgroundColor: active ? "var(--highlight-bg)" : "var(--surface)",
+                      color: active ? "var(--highlight-fg)" : "var(--fg)",
+                    }}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{SERVICE_LABELS[type]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <label htmlFor="new-place-name" className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
               Nombre
             </label>
@@ -174,7 +220,11 @@ export function AddPlaceModal({
             <input
               id="new-place-address"
               type="text"
-              placeholder="Calle y altura o zona"
+              placeholder={
+                serviceType === "delivery"
+                  ? "Dirección, barrio o app (opcional)"
+                  : "Calle y altura o zona"
+              }
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               className="zine-input"
@@ -218,7 +268,11 @@ export function AddPlaceModal({
               backgroundColor: rateNow ? "var(--surface-soft)" : "var(--bg)",
             }}
           >
-            <span>Ya fuimos, cargar mi puntaje ahora</span>
+            <span>
+              {serviceType === "delivery"
+                ? "Ya pedimos, cargar mi puntaje ahora"
+                : "Ya fuimos, cargar mi puntaje ahora"}
+            </span>
             <span
               className="rounded-full px-2.5 py-0.5 text-[11px]"
               style={{

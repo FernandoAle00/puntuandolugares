@@ -118,6 +118,7 @@ export async function listPlacesForUser(
     groupId: p.groupId,
     name: p.name,
     address: p.address,
+    serviceType: p.serviceType,
     meals: p.meals,
     createdAt: p.createdAt.toISOString(),
     ratings: (ratingsByPlace.get(p.id) ?? []).sort((a, b) =>
@@ -163,6 +164,7 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
     groupId: found.groupId,
     name: found.name,
     address: found.address,
+    serviceType: found.serviceType,
     meals: found.meals,
     createdAt: found.createdAt.toISOString(),
     ratings: ratingRows
@@ -201,6 +203,7 @@ export async function createPlaceRecord(
     groupId: input.groupId,
     name: input.name,
     address: input.address,
+    serviceType: input.serviceType,
     meals: input.meals,
     createdBy: userId,
     createdAt: now,
@@ -244,6 +247,7 @@ export async function updatePlaceRecord(
     .set({
       name: input.name ?? existing.name,
       address: input.address ?? existing.address,
+      serviceType: input.serviceType ?? existing.serviceType,
       meals: input.meals ?? existing.meals,
       updatedAt: new Date(),
     })

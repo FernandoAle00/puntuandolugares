@@ -6,17 +6,21 @@ import {
   Minus,
   Pencil,
   Plus,
+  ShoppingBag,
   Trash2,
+  Utensils,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import type { AccentColor, MealType } from "@/db/schema";
+import type { AccentColor, MealType, ServiceType } from "@/db/schema";
 import {
   buildGoogleMapsUrl,
   computeAverage,
   formatScore,
   MEAL_LABELS,
   MEALS,
+  SERVICE_LABELS,
+  SERVICE_TYPES,
   type PlacePhotoEntry,
   type PlaceWithRatings,
 } from "@/lib/domain";
@@ -63,6 +67,7 @@ export function PlaceSheet({
   const [editingMeta, setEditingMeta] = useState(false);
   const [name, setName] = useState(place?.name ?? "");
   const [address, setAddress] = useState(place?.address ?? "");
+  const [serviceType, setServiceType] = useState<ServiceType>(place?.serviceType ?? "dine_in");
   const [meals, setMeals] = useState<MealType[]>(place?.meals ?? ["cena"]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [photoCaption, setPhotoCaption] = useState("");
@@ -79,6 +84,7 @@ export function PlaceSheet({
     setNote(mine?.note ?? "");
     setName(place.name);
     setAddress(place.address);
+    setServiceType(place.serviceType);
     setMeals(place.meals);
     setEditingMeta(false);
     setConfirmDelete(false);
@@ -187,7 +193,7 @@ export function PlaceSheet({
       const res = await fetch(`/api/places/${place.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, address, meals }),
+        body: JSON.stringify({ name, address, serviceType, meals }),
       });
       const data = (await res.json().catch(() => null)) as {
         place?: PlaceWithRatings;
@@ -323,9 +329,26 @@ export function PlaceSheet({
             <h2 className="font-display m-0 text-[23px] leading-tight font-bold">
               {place.name}
             </h2>
-            <div className="mt-1 text-[13px]" style={{ color: "var(--fg-muted)" }}>
-              {place.meals.map((m) => MEAL_LABELS[m]).join(" / ")}
-              {place.address ? ` en ${place.address}` : ""}
+            <div
+              className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              {place.serviceType === "delivery" && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold"
+                  style={{
+                    backgroundColor: "var(--pill-bg)",
+                    color: "var(--pill-fg)",
+                  }}
+                >
+                  <ShoppingBag className="h-3 w-3" />
+                  {SERVICE_LABELS.delivery}
+                </span>
+              )}
+              <span>
+                {place.meals.map((m) => MEAL_LABELS[m]).join(" / ")}
+                {place.address ? ` en ${place.address}` : ""}
+              </span>
             </div>
           </div>
 
@@ -403,12 +426,49 @@ export function PlaceSheet({
             </div>
 
             <div className="flex flex-col gap-1">
+              <span className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+                Apartado
+              </span>
+              <div
+                className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-2 sm:grid-cols-2"
+                role="group"
+                aria-label="Tipo de lugar"
+              >
+                {SERVICE_TYPES.map((type) => {
+                  const active = serviceType === type;
+                  const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setServiceType(type)}
+                      className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl border-2 px-2.5 py-2 text-[12px] font-bold whitespace-nowrap"
+                      style={{
+                        borderColor: active ? "var(--border)" : "var(--border-soft)",
+                        backgroundColor: active ? "var(--highlight-bg)" : "var(--surface)",
+                        color: active ? "var(--highlight-fg)" : "var(--fg)",
+                      }}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{SERVICE_LABELS[type]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
               <label className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
                 Dirección
               </label>
               <input
                 type="text"
-                placeholder="Calle y altura"
+                placeholder={
+                  serviceType === "delivery"
+                    ? "Dirección, barrio o app (opcional)"
+                    : "Calle y altura"
+                }
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 className="zine-input"

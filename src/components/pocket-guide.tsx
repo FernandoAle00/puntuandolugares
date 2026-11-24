@@ -1,13 +1,23 @@
 "use client";
 
-import { Dices, LogOut, MapPin, Plus, Search, Users, X } from "lucide-react";
+import {
+  Dices,
+  LogOut,
+  MapPin,
+  Plus,
+  Search,
+  ShoppingBag,
+  Users,
+  Utensils,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AddPlaceModal } from "@/components/add-place-modal";
 import { accentCssVar, PlaceSheet } from "@/components/place-sheet";
 import { SocialSheet } from "@/components/social-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
-import type { AccentColor, MealType } from "@/db/schema";
+import type { AccentColor, MealType, ServiceType } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
 import {
   buildGoogleMapsUrl,
@@ -19,6 +29,8 @@ import {
   MEAL_LABELS,
   MEALS,
   pickRandomPending,
+  SERVICE_LABELS,
+  SERVICE_TYPES,
   type GroupSummary,
   type PlaceWithRatings,
   type SocialSnapshot,
@@ -52,6 +64,7 @@ export function PocketGuide({
   );
   const [places, setPlaces] = useState<PlaceWithRatings[]>(initialPlaces);
   const [social, setSocial] = useState<SocialSnapshot>(initialSocial);
+  const [serviceType, setServiceType] = useState<ServiceType>("dine_in");
   const [mode, setMode] = useState<ViewMode>("ranking");
   const [meal, setMeal] = useState<MealType | "all">("all");
   const [query, setQuery] = useState("");
@@ -62,7 +75,7 @@ export function PocketGuide({
     open: false,
     tab: "friends",
   });
-  const [pickedByGroup, setPickedByGroup] = useState<Record<string, string>>({});
+  const [pickedByScope, setPickedByScope] = useState<Record<string, string>>({});
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) ?? null,
@@ -74,23 +87,40 @@ export function PocketGuide({
     [places, activeGroupId],
   );
 
-  const ratedCount = useMemo(
-    () => groupPlaces.filter((p) => !isPendingPlace(p)).length,
+  const dineInCount = useMemo(
+    () => groupPlaces.filter((p) => p.serviceType === "dine_in").length,
     [groupPlaces],
   );
-  const pendingCount = groupPlaces.length - ratedCount;
+  const deliveryCount = groupPlaces.length - dineInCount;
 
-  const visiblePlaces = useMemo(
-    () => filterAndSortPlaces(groupPlaces, { mode, meal, query }),
-    [groupPlaces, mode, meal, query],
+  const servicePlaces = useMemo(
+    () => groupPlaces.filter((p) => p.serviceType === serviceType),
+    [groupPlaces, serviceType],
   );
 
+  const ratedCount = useMemo(
+    () => servicePlaces.filter((p) => !isPendingPlace(p)).length,
+    [servicePlaces],
+  );
+  const pendingCount = servicePlaces.length - ratedCount;
+  const gapCount = useMemo(
+    () => servicePlaces.filter((p) => computeGap(p.ratings) !== null).length,
+    [servicePlaces],
+  );
+
+  const visiblePlaces = useMemo(
+    () => filterAndSortPlaces(groupPlaces, { mode, meal, serviceType, query }),
+    [groupPlaces, mode, meal, serviceType, query],
+  );
+
+  const pickScopeKey = activeGroupId ? `${activeGroupId}:${serviceType}` : null;
+
   const pickedPlace = useMemo(() => {
-    if (!activeGroupId) return null;
-    const savedId = pickedByGroup[activeGroupId];
-    const exact = groupPlaces.find((p) => p.id === savedId && isPendingPlace(p));
-    return exact ?? groupPlaces.find(isPendingPlace) ?? null;
-  }, [activeGroupId, pickedByGroup, groupPlaces]);
+    if (!pickScopeKey) return null;
+    const savedId = pickedByScope[pickScopeKey];
+    const exact = servicePlaces.find((p) => p.id === savedId && isPendingPlace(p));
+    return exact ?? servicePlaces.find(isPendingPlace) ?? null;
+  }, [pickScopeKey, pickedByScope, servicePlaces]);
 
   const selectedPlace = useMemo(
     () => places.find((p) => p.id === selectedPlaceId) ?? null,
@@ -98,17 +128,19 @@ export function PocketGuide({
   );
 
   function handleSpinRandom() {
-    if (!activeGroupId) return;
-    const next = pickRandomPending(groupPlaces, pickedPlace?.id);
+    if (!pickScopeKey) return;
+    const next = pickRandomPending(servicePlaces, pickedPlace?.id);
     if (next) {
-      setPickedByGroup((prev) => ({ ...prev, [activeGroupId]: next.id }));
+      setPickedByScope((prev) => ({ ...prev, [pickScopeKey]: next.id }));
     }
   }
 
   function handleCreated(created: PlaceWithRatings) {
     setPlaces((prev) => [created, ...prev]);
+    setServiceType(created.serviceType);
     if (isPendingPlace(created)) {
-      setPickedByGroup((prev) => ({ ...prev, [created.groupId]: created.id }));
+      const scopeKey = `${created.groupId}:${created.serviceType}`;
+      setPickedByScope((prev) => ({ ...prev, [scopeKey]: created.id }));
     }
   }
 
@@ -336,6 +368,41 @@ export function PocketGuide({
             </div>
           )}
 
+          {/* Service Type Switcher */}
+          <div
+            className="mb-3.5 grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-1 rounded-2xl border-2 p-1 sm:grid-cols-2"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--surface)",
+            }}
+            role="tablist"
+            aria-label="Apartado"
+          >
+            {SERVICE_TYPES.map((type) => {
+              const active = serviceType === type;
+              const count = type === "dine_in" ? dineInCount : deliveryCount;
+              const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setServiceType(type)}
+                  className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[12px] leading-none font-bold whitespace-nowrap sm:text-[13px]"
+                  style={{
+                    backgroundColor: active ? "var(--badge-bg)" : "transparent",
+                    color: active ? "var(--badge-fg)" : "var(--fg-muted)",
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{SERVICE_LABELS[type]}</span>
+                  <span className="tabular opacity-80">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Roulette Decision Widget */}
           <section className="zine-roulette mb-4 flex items-center justify-between gap-3 p-4">
             <button
@@ -348,13 +415,15 @@ export function PocketGuide({
             >
               <div className="font-display text-[17px] leading-snug font-bold">
                 {pickedPlace
-                  ? `Próxima salida: ${pickedPlace.name}`
+                  ? `${serviceType === "delivery" ? "Próximo pedido" : "Próxima salida"}: ${pickedPlace.name}`
                   : "No quedan pendientes"}
               </div>
               <div className="mt-0.5 text-[13px]" style={{ color: "var(--highlight-muted)" }}>
                 {pickedPlace
                   ? pickedPlace.meals.map((m) => MEAL_LABELS[m]).join(" o ")
-                  : "Sumá un lugar nuevo para probar"}
+                  : serviceType === "delivery"
+                    ? "Sumá un lugar nuevo para pedir"
+                    : "Sumá un lugar nuevo para probar"}
               </div>
             </button>
 
@@ -380,7 +449,7 @@ export function PocketGuide({
               [
                 { key: "ranking", label: `Top (${ratedCount})` },
                 { key: "pending", label: `Pendientes (${pendingCount})` },
-                { key: "gap", label: "Polémicos" },
+                { key: "gap", label: `Polémicos (${gapCount})` },
               ] as const
             ).map((tab) => {
               const active = mode === tab.key;
@@ -391,7 +460,7 @@ export function PocketGuide({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setMode(tab.key)}
-                  className="pressable rounded-xl border-2 px-2 py-2.5 text-center text-[13px] font-bold"
+                  className="pressable tabular rounded-xl border-2 px-1.5 py-2.5 text-center text-[12px] font-bold whitespace-nowrap sm:px-2 sm:text-[13px]"
                   style={{
                     borderColor: "var(--border)",
                     backgroundColor: active ? "var(--fg)" : "var(--surface)",
@@ -623,6 +692,7 @@ export function PocketGuide({
         open={addOpen}
         groupId={activeGroup?.id ?? null}
         groupName={activeGroup?.name ?? ""}
+        defaultServiceType={serviceType}
         onClose={() => setAddOpen(false)}
         onCreated={handleCreated}
       />

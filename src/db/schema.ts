@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 export type MealType = "desayuno" | "almuerzo" | "merienda" | "cena";
+export type ServiceType = "dine_in" | "delivery";
 export type AccentColor = "teal" | "orange" | "cobalt" | "berry";
 export type FriendshipStatus = "pending" | "accepted";
 export type GroupRole = "owner" | "member";
@@ -122,6 +123,7 @@ export const place = sqliteTable("place", {
     .references(() => foodGroup.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   address: text("address").notNull().default(""),
+  serviceType: text("service_type").$type<ServiceType>().notNull().default("dine_in"),
   meals: text("meals", { mode: "json" }).$type<MealType[]>().notNull(),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

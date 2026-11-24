@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AccentColor, GroupRole, MealType } from "@/db/schema";
+import type { AccentColor, GroupRole, MealType, ServiceType } from "@/db/schema";
 
 export const MEALS: readonly MealType[] = [
   "desayuno",
@@ -15,6 +15,13 @@ export const MEAL_LABELS: Record<MealType, string> = {
   cena: "Cena",
 };
 
+export const SERVICE_TYPES: readonly ServiceType[] = ["dine_in", "delivery"] as const;
+
+export const SERVICE_LABELS: Record<ServiceType, string> = {
+  dine_in: "Salidas",
+  delivery: "Delivery / Take away",
+};
+
 export const ACCENTS: readonly AccentColor[] = [
   "teal",
   "orange",
@@ -23,6 +30,7 @@ export const ACCENTS: readonly AccentColor[] = [
 ] as const;
 
 export const mealSchema = z.enum(["desayuno", "almuerzo", "merienda", "cena"]);
+export const serviceTypeSchema = z.enum(["dine_in", "delivery"]);
 
 export const scoreSchema = z
   .number({ invalid_type_error: "El puntaje tiene que ser un número" })
@@ -40,6 +48,7 @@ export const createPlaceSchema = z.object({
     .min(1, "Escribí el nombre del lugar")
     .max(120, "Nombre demasiado largo"),
   address: z.string().trim().max(240, "Dirección demasiado larga").default(""),
+  serviceType: serviceTypeSchema.default("dine_in"),
   meals: z
     .array(mealSchema)
     .min(1, "Elegí al menos un momento")
@@ -61,6 +70,7 @@ export const updatePlaceSchema = z.object({
     .max(120, "Nombre demasiado largo")
     .optional(),
   address: z.string().trim().max(240, "Dirección demasiado larga").optional(),
+  serviceType: serviceTypeSchema.optional(),
   meals: z
     .array(mealSchema)
     .min(1, "Elegí al menos un momento")
@@ -151,6 +161,7 @@ export interface PlaceWithRatings {
   groupId: string;
   name: string;
   address: string;
+  serviceType: ServiceType;
   meals: MealType[];
   createdAt: string;
   ratings: RatingEntry[];
@@ -200,19 +211,21 @@ export function buildGoogleMapsUrl(place: Pick<PlaceWithRatings, "name" | "addre
 }
 
 /**
- * Filters and sorts places for the active tab, meal filter, and search text.
+ * Filters and sorts places for the active tab, service type, meal filter, and search text.
  */
 export function filterAndSortPlaces(
   places: readonly PlaceWithRatings[],
   options: {
     mode: ViewMode;
     meal: MealType | "all";
+    serviceType?: ServiceType;
     query?: string;
   },
 ): PlaceWithRatings[] {
   const normalizedQuery = (options.query ?? "").trim().toLowerCase();
 
   const matching = places.filter((p) => {
+    if (options.serviceType && p.serviceType !== options.serviceType) return false;
     if (options.meal !== "all" && !p.meals.includes(options.meal)) return false;
     if (!normalizedQuery) return true;
     const notesText = p.ratings.map((r) => `${r.userName} ${r.note}`).join(" ");

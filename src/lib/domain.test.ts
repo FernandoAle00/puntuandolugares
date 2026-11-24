@@ -9,6 +9,7 @@ import {
   friendRequestSchema,
   pickRandomPending,
   scoreSchema,
+  updatePlaceSchema,
   type PlaceWithRatings,
 } from "@/lib/domain";
 
@@ -18,6 +19,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     groupId: "g-fer-juli",
     name: "La Dominga",
     address: "Belgrano 412",
+    serviceType: "dine_in",
     meals: ["cena", "almuerzo"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -47,6 +49,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     groupId: "g-fer-juli",
     name: "Ariadna",
     address: "",
+    serviceType: "dine_in",
     meals: ["desayuno", "merienda"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -76,6 +79,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     groupId: "g-fer-juli",
     name: "Café Iris",
     address: "",
+    serviceType: "dine_in",
     meals: ["desayuno", "merienda"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [],
@@ -86,7 +90,43 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     groupId: "g-fer-juli",
     name: "Troppo Napoletano",
     address: "",
+    serviceType: "dine_in",
     meals: ["cena"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ratings: [],
+    photos: [],
+  },
+];
+
+const DELIVERY_PLACES: PlaceWithRatings[] = [
+  {
+    id: "sushi-home",
+    groupId: "g-fer-juli",
+    name: "Kuro Sushi",
+    address: "PedidosYa",
+    serviceType: "delivery",
+    meals: ["cena"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ratings: [
+      {
+        id: "r5",
+        userId: "fer",
+        userName: "Fer",
+        userAccent: "teal",
+        score: 8.5,
+        note: "",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    photos: [],
+  },
+  {
+    id: "empanadas-sur",
+    groupId: "g-fer-juli",
+    name: "Empanadas del Sur",
+    address: "Rappi",
+    serviceType: "delivery",
+    meals: ["almuerzo", "cena"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [],
     photos: [],
@@ -118,7 +158,30 @@ describe("domain validation", () => {
     expect(parsed.groupId).toBe("g-fer-juli");
     expect(parsed.name).toBe("Keik");
     expect(parsed.address).toBe("España 310");
+    expect(parsed.serviceType).toBe("dine_in");
     expect(parsed.meals).toEqual(["desayuno", "merienda"]);
+  });
+
+  it("validates serviceType on place creation and update", () => {
+    const delivery = createPlaceSchema.parse({
+      groupId: "g-fer-juli",
+      name: "Kuro Sushi",
+      serviceType: "delivery",
+      meals: ["cena"],
+    });
+    expect(delivery.serviceType).toBe("delivery");
+
+    expect(
+      createPlaceSchema.safeParse({
+        groupId: "g-fer-juli",
+        name: "Kuro Sushi",
+        serviceType: "takeout",
+        meals: ["cena"],
+      }).success,
+    ).toBe(false);
+
+    expect(updatePlaceSchema.parse({ serviceType: "delivery" }).serviceType).toBe("delivery");
+    expect(updatePlaceSchema.parse({ name: "Nuevo" }).serviceType).toBeUndefined();
   });
 
   it("normalizes friend email and validates group creation", () => {
@@ -158,5 +221,36 @@ describe("rating calculations and filtering", () => {
   it("picks another pending place when excluding current pick", () => {
     const picked = pickRandomPending(SAMPLE_PLACES, "iris", () => 0);
     expect(picked?.id).toBe("troppo");
+  });
+
+  it("filters places by serviceType when provided", () => {
+    const combined = [...SAMPLE_PLACES, ...DELIVERY_PLACES];
+
+    const dineInRanking = filterAndSortPlaces(combined, {
+      mode: "ranking",
+      meal: "all",
+      serviceType: "dine_in",
+    });
+    expect(dineInRanking.map((p) => p.id)).toEqual(["dominga", "ariadna"]);
+
+    const deliveryRanking = filterAndSortPlaces(combined, {
+      mode: "ranking",
+      meal: "all",
+      serviceType: "delivery",
+    });
+    expect(deliveryRanking.map((p) => p.id)).toEqual(["sushi-home"]);
+
+    const deliveryPending = filterAndSortPlaces(combined, {
+      mode: "pending",
+      meal: "all",
+      serviceType: "delivery",
+    });
+    expect(deliveryPending.map((p) => p.id)).toEqual(["empanadas-sur"]);
+
+    const allRanking = filterAndSortPlaces(combined, {
+      mode: "ranking",
+      meal: "all",
+    });
+    expect(allRanking.map((p) => p.id)).toEqual(["dominga", "sushi-home", "ariadna"]);
   });
 });

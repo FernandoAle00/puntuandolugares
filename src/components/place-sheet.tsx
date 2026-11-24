@@ -990,8 +990,8 @@ export function PlaceSheet({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
+            <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1">
                 <label
                   htmlFor="new-visit-dish"
                   className="text-[12px] font-semibold"
@@ -1009,7 +1009,7 @@ export function PlaceSheet({
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className="flex min-w-0 flex-col gap-1">
                 <label
                   htmlFor="new-visit-date"
                   className="text-[12px] font-semibold"
@@ -1175,18 +1175,18 @@ export function PlaceSheet({
 
                   {/* Optional date editor */}
                   {isEditingDate && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <input
                         type="date"
                         value={editDateValue}
                         onChange={(e) => setEditDateValue(e.target.value)}
-                        className="zine-input flex-1"
+                        className="zine-input min-w-0 flex-1"
                       />
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => handleSaveVisitDate(visit.id)}
-                        className="pressable rounded-xl px-3 py-2 text-[12px] font-bold"
+                        className="pressable shrink-0 rounded-xl px-3 py-2 text-[12px] font-bold"
                         style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
                       >
                         OK

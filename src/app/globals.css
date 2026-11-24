@@ -194,13 +194,35 @@ textarea:focus-visible {
 }
 
 .zine-input {
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background-color: var(--bg);
   color: var(--fg);
   border: 1.5px solid var(--border-soft);
   border-radius: 12px;
   padding: 10px 12px;
   transition: border-color 120ms ease;
+}
+
+input[type="date"].zine-input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 46px;
+  line-height: 1.4;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+input[type="date"].zine-input::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+  min-width: 0;
 }
 
 .zine-input::placeholder {

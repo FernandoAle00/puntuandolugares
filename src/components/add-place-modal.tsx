@@ -331,7 +331,7 @@ export function AddPlaceModal({
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className="flex min-w-0 flex-col gap-1">
                 <label
                   htmlFor="new-place-date"
                   className="text-[12px] font-semibold"

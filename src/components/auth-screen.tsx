@@ -97,7 +97,7 @@ export function AuthScreen({ inviteRequired, googleEnabled }: AuthScreenProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[460px] flex-col justify-center px-4 py-8">
+    <main className="app-shell mx-auto flex min-h-dvh w-full max-w-[460px] flex-col justify-center px-4">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h1 className="font-display m-0 text-[28px] leading-tight font-bold tracking-tight">
           ¿Dónde comemos?

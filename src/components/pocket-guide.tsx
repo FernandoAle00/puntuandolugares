@@ -2,6 +2,8 @@
 
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Dices,
   IceCreamCone,
   LogOut,
@@ -39,6 +41,7 @@ import {
   SERVICE_LABELS,
   SERVICE_TYPES,
   type GroupSummary,
+  type PlacePhotoEntry,
   type PlaceWithRatings,
   type SocialSnapshot,
   type ViewMode,
@@ -85,6 +88,11 @@ export function PocketGuide({
     tab: "friends",
   });
   const [pickedByScope, setPickedByScope] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<{
+    photos: PlacePhotoEntry[];
+    index: number;
+    placeName: string;
+  } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [justRefreshed, setJustRefreshed] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,6 +102,29 @@ export function PocketGuide({
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setLightbox(null);
+      } else if (e.key === "ArrowLeft") {
+        setLightbox((prev) =>
+          prev && prev.photos.length > 1
+            ? { ...prev, index: (prev.index - 1 + prev.photos.length) % prev.photos.length }
+            : prev,
+        );
+      } else if (e.key === "ArrowRight") {
+        setLightbox((prev) =>
+          prev && prev.photos.length > 1
+            ? { ...prev, index: (prev.index + 1) % prev.photos.length }
+            : prev,
+        );
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightbox]);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) ?? null,
@@ -294,13 +325,7 @@ export function PocketGuide({
   const pendingReqCount = social.incomingRequests.length;
 
   return (
-    <main
-      className="mx-auto w-full max-w-[540px] px-4 pt-4 pb-12"
-      style={{
-        paddingTop: "calc(16px + env(safe-area-inset-top, 0px))",
-        paddingBottom: "calc(44px + env(safe-area-inset-bottom, 0px))",
-      }}
-    >
+    <main className="app-shell mx-auto w-full max-w-[540px] px-4">
       {/* Header */}
       <header className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -888,10 +913,25 @@ export function PocketGuide({
 
                   {place.photos.length > 0 && (
                     <div className="flex items-center gap-2">
-                      {place.photos.slice(0, 4).map((photo) => (
-                        <div
+                      {place.photos.slice(0, 4).map((photo, photoIdx) => (
+                        <button
                           key={photo.id}
-                          className="h-14 w-14 overflow-hidden rounded-xl border"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightbox({
+                              photos: place.photos,
+                              index: photoIdx,
+                              placeName: place.name,
+                            });
+                          }}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          aria-label={
+                            photo.caption
+                              ? `Ver foto: ${photo.caption}`
+                              : `Ver foto de ${place.name}`
+                          }
+                          className="pressable h-14 w-14 overflow-hidden rounded-xl border p-0"
                           style={{ borderColor: "var(--border-soft)" }}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -901,15 +941,29 @@ export function PocketGuide({
                             className="h-full w-full object-cover"
                             loading="lazy"
                           />
-                        </div>
+                        </button>
                       ))}
                       {place.photos.length > 4 && (
-                        <span
-                          className="tabular text-[12px] font-bold"
-                          style={{ color: "var(--fg-muted)" }}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightbox({
+                              photos: place.photos,
+                              index: 4,
+                              placeName: place.name,
+                            });
+                          }}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          aria-label={`Ver ${place.photos.length - 4} fotos más de ${place.name}`}
+                          className="pressable tabular rounded-lg px-2 py-1 text-[12px] font-bold"
+                          style={{
+                            backgroundColor: "var(--pill-bg)",
+                            color: "var(--pill-fg)",
+                          }}
                         >
                           +{place.photos.length - 4}
-                        </span>
+                        </button>
                       )}
                     </div>
                   )}
@@ -1014,6 +1068,103 @@ export function PocketGuide({
         onGroupCreated={handleGroupCreated}
         onGroupUpdated={handleGroupUpdated}
       />
+
+      {/* Full-size Photo Lightbox from main list */}
+      {lightbox && lightbox.photos[lightbox.index] && (() => {
+        const activePhoto = lightbox.photos[lightbox.index]!;
+        const total = lightbox.photos.length;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Foto de ${lightbox.placeName}`}
+            className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4"
+            style={{
+              backgroundColor: "rgba(0, 0, 0, 0.92)",
+              paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+              paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+            }}
+            onClick={() => setLightbox(null)}
+          >
+            <button
+              type="button"
+              onClick={() => setLightbox(null)}
+              aria-label="Cerrar foto"
+              className="pressable absolute right-4 inline-flex h-10 w-10 items-center justify-center rounded-full"
+              style={{
+                top: "max(16px, env(safe-area-inset-top, 0px))",
+                backgroundColor: "rgba(255,255,255,0.16)",
+                color: "#ffffff",
+              }}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div
+              className="relative flex w-full max-w-[520px] items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {total > 1 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLightbox((prev) =>
+                      prev ? { ...prev, index: (prev.index - 1 + total) % total } : prev,
+                    )
+                  }
+                  aria-label="Foto anterior"
+                  className="pressable absolute left-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "#ffffff" }}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={activePhoto.url}
+                alt={activePhoto.caption || lightbox.placeName}
+                className="max-h-[78dvh] max-w-full rounded-2xl object-contain"
+              />
+
+              {total > 1 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLightbox((prev) =>
+                      prev ? { ...prev, index: (prev.index + 1) % total } : prev,
+                    )
+                  }
+                  aria-label="Foto siguiente"
+                  className="pressable absolute right-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "#ffffff" }}
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 text-center text-[14px] text-white">
+              <div className="font-display font-bold">{lightbox.placeName}</div>
+              {(activePhoto.caption || activePhoto.uploadedBy || total > 1) && (
+                <div className="mt-0.5 text-[13px] text-white/80">
+                  {activePhoto.caption && <span>{activePhoto.caption}</span>}
+                  {activePhoto.uploadedBy && (
+                    <span className={activePhoto.caption ? "ml-1.5 opacity-75" : "opacity-75"}>
+                      ({activePhoto.uploadedBy})
+                    </span>
+                  )}
+                  {total > 1 && (
+                    <span className="tabular ml-2 opacity-75">
+                      {lightbox.index + 1}/{total}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

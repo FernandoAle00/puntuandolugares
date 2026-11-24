@@ -80,6 +80,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
+        <div className="ios-status-shield" aria-hidden="true" />
         <PwaRegister />
         {children}
       </body>

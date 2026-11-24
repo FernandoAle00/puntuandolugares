@@ -1563,15 +1563,23 @@ export function PlaceSheet({
       {lightboxPhoto && (
         <div
           className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0, 0, 0, 0.9)" }}
+          style={{
+            backgroundColor: "rgba(0, 0, 0, 0.9)",
+            paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+            paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+          }}
           onClick={() => setLightboxPhoto(null)}
         >
           <button
             type="button"
             onClick={() => setLightboxPhoto(null)}
             aria-label="Cerrar foto"
-            className="pressable absolute top-4 right-4 inline-flex h-10 w-10 items-center justify-center rounded-full"
-            style={{ backgroundColor: "rgba(255,255,255,0.16)", color: "#ffffff" }}
+            className="pressable absolute right-4 inline-flex h-10 w-10 items-center justify-center rounded-full"
+            style={{
+              top: "max(16px, env(safe-area-inset-top, 0px))",
+              backgroundColor: "rgba(255,255,255,0.16)",
+              color: "#ffffff",
+            }}
           >
             <X className="h-5 w-5" />
           </button>

@@ -125,6 +125,8 @@ export const place = sqliteTable("place", {
   name: text("name").notNull(),
   address: text("address").notNull().default(""),
   serviceType: text("service_type").$type<ServiceType>().notNull().default("dine_in"),
+  repeatMarked: integer("repeat_marked", { mode: "boolean" }).notNull().default(false),
+  nextOrder: text("next_order").notNull().default(""),
   meals: text("meals", { mode: "json" }).$type<MealType[]>().notNull(),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

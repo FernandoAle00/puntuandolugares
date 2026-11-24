@@ -79,6 +79,8 @@ const CREATE_TABLES_SQL: string[] = [
     name text NOT NULL,
     address text DEFAULT '' NOT NULL,
     service_type text DEFAULT 'dine_in' NOT NULL,
+    repeat_marked integer DEFAULT 0 NOT NULL,
+    next_order text DEFAULT '' NOT NULL,
     meals text NOT NULL,
     created_by text REFERENCES user(id) ON DELETE set null,
     created_at integer NOT NULL,
@@ -137,6 +139,16 @@ const COLUMN_MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
     table: "place",
     column: "service_type",
     ddl: "ALTER TABLE place ADD COLUMN service_type text NOT NULL DEFAULT 'dine_in'",
+  },
+  {
+    table: "place",
+    column: "repeat_marked",
+    ddl: "ALTER TABLE place ADD COLUMN repeat_marked integer NOT NULL DEFAULT 0",
+  },
+  {
+    table: "place",
+    column: "next_order",
+    ddl: "ALTER TABLE place ADD COLUMN next_order text NOT NULL DEFAULT ''",
   },
   {
     table: "place_photo",

@@ -24,6 +24,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     name: "La Dominga",
     address: "Belgrano 412",
     serviceType: "dine_in",
+    repeatMarked: true,
+    nextOrder: "Probar tiramisú",
     meals: ["cena", "almuerzo"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -84,6 +86,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     name: "Ariadna",
     address: "",
     serviceType: "dine_in",
+    repeatMarked: false,
+    nextOrder: "",
     meals: ["desayuno", "merienda"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -115,6 +119,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     name: "Café Iris",
     address: "",
     serviceType: "dine_in",
+    repeatMarked: false,
+    nextOrder: "",
     meals: ["desayuno", "merienda"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [],
@@ -127,6 +133,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
     name: "Troppo Napoletano",
     address: "",
     serviceType: "dine_in",
+    repeatMarked: false,
+    nextOrder: "",
     meals: ["cena"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [],
@@ -142,6 +150,8 @@ const EXTRA_SERVICE_PLACES: PlaceWithRatings[] = [
     name: "Kuro Sushi",
     address: "PedidosYa",
     serviceType: "delivery",
+    repeatMarked: true,
+    nextOrder: "Roll salmón ahumado",
     meals: ["cena"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -164,6 +174,8 @@ const EXTRA_SERVICE_PLACES: PlaceWithRatings[] = [
     name: "Empanadas del Sur",
     address: "Rappi",
     serviceType: "delivery",
+    repeatMarked: false,
+    nextOrder: "",
     meals: ["almuerzo", "cena"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [],
@@ -176,6 +188,8 @@ const EXTRA_SERVICE_PLACES: PlaceWithRatings[] = [
     name: "Rapanui",
     address: "Bv. Gálvez",
     serviceType: "ice_cream",
+    repeatMarked: true,
+    nextOrder: "Pistacho y chocolate amargo",
     meals: ["merienda", "cena"],
     createdAt: "2026-01-01T00:00:00.000Z",
     ratings: [
@@ -256,6 +270,12 @@ describe("domain validation", () => {
 
     expect(updatePlaceSchema.parse({ serviceType: "ice_cream" }).serviceType).toBe("ice_cream");
     expect(updatePlaceSchema.parse({ name: "Nuevo" }).serviceType).toBeUndefined();
+    expect(
+      updatePlaceSchema.parse({ repeatMarked: true, nextOrder: "  Pedir tiramisú  " }),
+    ).toEqual({
+      repeatMarked: true,
+      nextOrder: "Pedir tiramisú",
+    });
   });
 
   it("validates visit creation payloads", () => {
@@ -422,5 +442,22 @@ describe("rating calculations, visits, and filtering", () => {
         serviceType: "delivery",
       }).map((p) => p.id),
     ).toEqual(["empanadas-sur"]);
+
+    expect(
+      filterAndSortPlaces(combined, {
+        mode: "ranking",
+        meal: "all",
+        onlyRepeat: true,
+      }).map((p) => p.id),
+    ).toEqual(["dominga", "rapanui", "sushi-home"]);
+
+    expect(
+      filterAndSortPlaces(combined, {
+        mode: "ranking",
+        meal: "all",
+        onlyRepeat: true,
+        query: "tiramisú",
+      }).map((p) => p.id),
+    ).toEqual(["dominga"]);
   });
 });

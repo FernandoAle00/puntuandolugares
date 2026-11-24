@@ -93,6 +93,8 @@ export const updatePlaceSchema = z.object({
     .optional(),
   address: z.string().trim().max(240, "Dirección demasiado larga").optional(),
   serviceType: serviceTypeSchema.optional(),
+  repeatMarked: z.boolean().optional(),
+  nextOrder: z.string().trim().max(300, "Texto demasiado largo").optional(),
   meals: z
     .array(mealSchema)
     .min(1, "Elegí al menos un momento")
@@ -226,6 +228,8 @@ export interface PlaceWithRatings {
   name: string;
   address: string;
   serviceType: ServiceType;
+  repeatMarked: boolean;
+  nextOrder: string;
   meals: MealType[];
   createdAt: string;
   ratings: RatingEntry[];
@@ -378,7 +382,7 @@ export function buildGoogleMapsUrl(place: Pick<PlaceWithRatings, "name" | "addre
 }
 
 /**
- * Filters and sorts places for the active tab, service type, meal filter, and search text.
+ * Filters and sorts places for the active tab, service type, repeat flag, meal filter, and search text.
  */
 export function filterAndSortPlaces(
   places: readonly PlaceWithRatings[],
@@ -386,12 +390,14 @@ export function filterAndSortPlaces(
     mode: ViewMode;
     meal: MealType | "all";
     serviceType?: ServiceType;
+    onlyRepeat?: boolean;
     query?: string;
   },
 ): PlaceWithRatings[] {
   const normalizedQuery = (options.query ?? "").trim().toLowerCase();
 
   const matching = places.filter((p) => {
+    if (options.onlyRepeat && !p.repeatMarked) return false;
     if (options.serviceType && p.serviceType !== options.serviceType) return false;
     if (options.meal !== "all" && !p.meals.includes(options.meal)) return false;
     if (!normalizedQuery) return true;
@@ -399,9 +405,18 @@ export function filterAndSortPlaces(
     const visitsText = p.visits
       .flatMap((v) => v.entries.map((e) => `${e.userName} ${e.dish} ${e.note}`))
       .join(" ");
-    const haystack = `${p.name} ${p.address} ${notesText} ${visitsText}`.toLowerCase();
+    const haystack = `${p.name} ${p.address} ${p.nextOrder} ${notesText} ${visitsText}`.toLowerCase();
     return haystack.includes(normalizedQuery);
   });
+
+  if (options.onlyRepeat) {
+    return [...matching].sort((a, b) => {
+      const avgA = computeAverage(a.ratings) ?? -1;
+      const avgB = computeAverage(b.ratings) ?? -1;
+      if (avgB !== avgA) return avgB - avgA;
+      return a.name.localeCompare(b.name, "es");
+    });
+  }
 
   if (options.mode === "pending") {
     return matching
@@ -429,6 +444,23 @@ export function filterAndSortPlaces(
 }
 
 /**
+ * Picks a random place from a list, avoiding the currently highlighted place when more than one exists.
+ */
+export function pickRandomPlace(
+  places: readonly PlaceWithRatings[],
+  excludeId?: string | null,
+  randomFn: () => number = Math.random,
+): PlaceWithRatings | null {
+  if (places.length === 0) return null;
+  const pool =
+    excludeId && places.length > 1
+      ? places.filter((p) => p.id !== excludeId)
+      : places;
+  const idx = Math.floor(randomFn() * pool.length);
+  return pool[idx] ?? places[0] ?? null;
+}
+
+/**
  * Picks a random pending place, avoiding the currently highlighted place when more than one exists.
  */
 export function pickRandomPending(
@@ -436,12 +468,5 @@ export function pickRandomPending(
   excludeId?: string | null,
   randomFn: () => number = Math.random,
 ): PlaceWithRatings | null {
-  const pending = places.filter(isPendingPlace);
-  if (pending.length === 0) return null;
-  const pool =
-    excludeId && pending.length > 1
-      ? pending.filter((p) => p.id !== excludeId)
-      : pending;
-  const idx = Math.floor(randomFn() * pool.length);
-  return pool[idx] ?? pending[0] ?? null;
+  return pickRandomPlace(places.filter(isPendingPlace), excludeId, randomFn);
 }

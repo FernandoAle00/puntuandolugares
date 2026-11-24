@@ -8,6 +8,7 @@ import {
   Minus,
   Pencil,
   Plus,
+  Repeat,
   ShoppingBag,
   Trash2,
   Utensils,
@@ -172,6 +173,8 @@ export function PlaceSheet({
   const [address, setAddress] = useState(place?.address ?? "");
   const [serviceType, setServiceType] = useState<ServiceType>(place?.serviceType ?? "dine_in");
   const [meals, setMeals] = useState<MealType[]>(place?.meals ?? ["cena"]);
+  const [nextOrder, setNextOrder] = useState(place?.nextOrder ?? "");
+  const [nextOrderSaved, setNextOrderSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // New visit composer state
@@ -212,6 +215,8 @@ export function PlaceSheet({
     setAddress(place.address);
     setServiceType(place.serviceType);
     setMeals(place.meals);
+    setNextOrder(place.nextOrder);
+    setNextOrderSaved(false);
     setEditingMeta(false);
     setConfirmDelete(false);
     setNewVisitOpen(place.visits.length === 0);
@@ -252,6 +257,91 @@ export function PlaceSheet({
       ? "Ej. Dulce de leche granizado, pistacho..."
       : "Ej. Milanesa napolitana, tabla 1...";
   const unlinkedPhotos = place.photos.filter((p) => !p.visitId);
+  const pastDishes = Array.from(
+    new Set(
+      place.visits
+        .flatMap((v) => v.entries.map((e) => e.dish.trim()))
+        .filter((d) => d.length > 0),
+    ),
+  );
+
+  function handleSelectPastDish(dish: string) {
+    setNextOrderSaved(false);
+    setNextOrder((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return dish;
+      if (trimmed.toLowerCase() === dish.toLowerCase()) return "";
+      const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+      const existsIdx = parts.findIndex((p) => p.toLowerCase() === dish.toLowerCase());
+      if (existsIdx >= 0) {
+        parts.splice(existsIdx, 1);
+        return parts.join(", ");
+      }
+      return [...parts, dish].join(", ");
+    });
+  }
+
+  async function handleToggleRepeat() {
+    if (!place) return;
+    setBusy(true);
+    setError(null);
+    setNextOrderSaved(false);
+    try {
+      const nextMarked = !place.repeatMarked;
+      const res = await fetch(`/api/places/${place.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repeatMarked: nextMarked }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        place?: PlaceWithRatings;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.place) {
+        setError(data?.error || "No se pudo actualizar A repetir");
+        setBusy(false);
+        return;
+      }
+      onUpdated(data.place);
+      setNextOrder(data.place.nextOrder);
+      setBusy(false);
+    } catch {
+      setError("Error de conexión");
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveNextOrder() {
+    if (!place) return;
+    setBusy(true);
+    setError(null);
+    setNextOrderSaved(false);
+    try {
+      const res = await fetch(`/api/places/${place.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repeatMarked: true, nextOrder }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        place?: PlaceWithRatings;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.place) {
+        setError(data?.error || "No se pudo guardar qué pedir la próxima");
+        setBusy(false);
+        return;
+      }
+      onUpdated(data.place);
+      setNextOrder(data.place.nextOrder);
+      setNextOrderSaved(true);
+      setBusy(false);
+    } catch {
+      setError("Error de conexión");
+      setBusy(false);
+    }
+  }
 
   function toggleMeal(m: MealType) {
     setMeals((prev) => {
@@ -662,6 +752,22 @@ export function PlaceSheet({
 
           <button
             type="button"
+            disabled={busy}
+            aria-pressed={place.repeatMarked}
+            onClick={handleToggleRepeat}
+            className="pressable inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[12px] font-bold disabled:opacity-60"
+            style={{
+              borderColor: place.repeatMarked ? "var(--border)" : "var(--border-soft)",
+              backgroundColor: place.repeatMarked ? "var(--badge-bg)" : "transparent",
+              color: place.repeatMarked ? "var(--badge-fg)" : "var(--fg)",
+            }}
+          >
+            <Repeat className="h-3.5 w-3.5" />
+            A repetir
+          </button>
+
+          <button
+            type="button"
             onClick={() => setEditingMeta((v) => !v)}
             className="pressable inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[12px] font-bold"
             style={{
@@ -695,6 +801,86 @@ export function PlaceSheet({
             </button>
           )}
         </div>
+
+        {/* Next-order selector when marked as A repetir */}
+        {place.repeatMarked && (
+          <section
+            className="mb-4 flex flex-col gap-2.5 rounded-2xl border-2 p-3.5"
+            style={{ borderColor: "var(--border)", backgroundColor: "var(--bg)" }}
+            aria-label="Qué pedir la próxima vez"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[13px] font-bold">
+                <Repeat className="h-3.5 w-3.5" />
+                Para pedir la próxima vez
+              </span>
+              {nextOrderSaved && (
+                <span className="text-[11.5px] font-bold" style={{ color: "var(--accent-teal)" }}>
+                  Guardado
+                </span>
+              )}
+            </div>
+
+            {pastDishes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {pastDishes.map((dish) => {
+                  const selected = nextOrder
+                    .split(",")
+                    .map((s) => s.trim().toLowerCase())
+                    .includes(dish.toLowerCase());
+                  return (
+                    <button
+                      key={dish}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => handleSelectPastDish(dish)}
+                      className="pressable rounded-full border-2 px-2.5 py-1 text-[12px] font-bold"
+                      style={{
+                        borderColor: selected ? "var(--border)" : "var(--border-soft)",
+                        backgroundColor: selected ? "var(--highlight-bg)" : "var(--surface)",
+                        color: selected ? "var(--highlight-fg)" : "var(--fg)",
+                      }}
+                    >
+                      {dish}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder={
+                  place.serviceType === "ice_cream"
+                    ? "Ej. Probar pistacho, sambayón..."
+                    : "Qué del menú querés pedir la próxima..."
+                }
+                value={nextOrder}
+                onChange={(e) => {
+                  setNextOrder(e.target.value);
+                  setNextOrderSaved(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSaveNextOrder();
+                  }
+                }}
+                className="zine-input flex-1"
+              />
+              <button
+                type="button"
+                disabled={busy || nextOrder.trim() === place.nextOrder}
+                onClick={handleSaveNextOrder}
+                className="pressable shrink-0 rounded-xl px-3.5 py-2 text-[12px] font-bold disabled:opacity-50"
+                style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
+              >
+                Guardar
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Optional place metadata editor */}
         {editingMeta && (

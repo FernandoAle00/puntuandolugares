@@ -8,6 +8,7 @@ import {
   MapPin,
   Plus,
   RefreshCw,
+  Repeat,
   Search,
   ShoppingBag,
   User,
@@ -29,10 +30,12 @@ import {
   computeGap,
   filterAndSortPlaces,
   formatScore,
+  formatVisitDate,
   isPendingPlace,
   MEAL_LABELS,
   MEALS,
   pickRandomPending,
+  pickRandomPlace,
   SERVICE_LABELS,
   SERVICE_TYPES,
   type GroupSummary,
@@ -40,6 +43,8 @@ import {
   type SocialSnapshot,
   type ViewMode,
 } from "@/lib/domain";
+
+type SectionKey = ServiceType | "repeat";
 
 interface CurrentUser {
   id: string;
@@ -68,7 +73,7 @@ export function PocketGuide({
   );
   const [places, setPlaces] = useState<PlaceWithRatings[]>(initialPlaces);
   const [social, setSocial] = useState<SocialSnapshot>(initialSocial);
-  const [serviceType, setServiceType] = useState<ServiceType>("dine_in");
+  const [section, setSection] = useState<SectionKey>("dine_in");
   const [mode, setMode] = useState<ViewMode>("ranking");
   const [meal, setMeal] = useState<MealType | "all">("all");
   const [query, setQuery] = useState("");
@@ -117,9 +122,17 @@ export function PocketGuide({
     return counts;
   }, [groupPlaces]);
 
+  const repeatPlaces = useMemo(
+    () => groupPlaces.filter((p) => p.repeatMarked),
+    [groupPlaces],
+  );
+
+  const isRepeatSection = section === "repeat";
+  const activeServiceType: ServiceType = isRepeatSection ? "dine_in" : section;
+
   const servicePlaces = useMemo(
-    () => groupPlaces.filter((p) => p.serviceType === serviceType),
-    [groupPlaces, serviceType],
+    () => (isRepeatSection ? repeatPlaces : groupPlaces.filter((p) => p.serviceType === section)),
+    [groupPlaces, repeatPlaces, isRepeatSection, section],
   );
 
   const ratedCount = useMemo(
@@ -133,18 +146,29 @@ export function PocketGuide({
   );
 
   const visiblePlaces = useMemo(
-    () => filterAndSortPlaces(groupPlaces, { mode: effectiveMode, meal, serviceType, query }),
-    [groupPlaces, effectiveMode, meal, serviceType, query],
+    () =>
+      filterAndSortPlaces(groupPlaces, {
+        mode: effectiveMode,
+        meal,
+        serviceType: isRepeatSection ? undefined : section,
+        onlyRepeat: isRepeatSection,
+        query,
+      }),
+    [groupPlaces, effectiveMode, meal, isRepeatSection, section, query],
   );
 
-  const pickScopeKey = activeGroupId ? `${activeGroupId}:${serviceType}` : null;
+  const pickScopeKey = activeGroupId ? `${activeGroupId}:${section}` : null;
 
   const pickedPlace = useMemo(() => {
     if (!pickScopeKey) return null;
     const savedId = pickedByScope[pickScopeKey];
+    if (isRepeatSection) {
+      const exact = repeatPlaces.find((p) => p.id === savedId);
+      return exact ?? repeatPlaces[0] ?? null;
+    }
     const exact = servicePlaces.find((p) => p.id === savedId && isPendingPlace(p));
     return exact ?? servicePlaces.find(isPendingPlace) ?? null;
-  }, [pickScopeKey, pickedByScope, servicePlaces]);
+  }, [pickScopeKey, pickedByScope, isRepeatSection, repeatPlaces, servicePlaces]);
 
   const selectedPlace = useMemo(
     () => places.find((p) => p.id === selectedPlaceId) ?? null,
@@ -153,7 +177,9 @@ export function PocketGuide({
 
   function handleSpinRandom() {
     if (!pickScopeKey) return;
-    const next = pickRandomPending(servicePlaces, pickedPlace?.id);
+    const next = isRepeatSection
+      ? pickRandomPlace(repeatPlaces, pickedPlace?.id)
+      : pickRandomPending(servicePlaces, pickedPlace?.id);
     if (next) {
       setPickedByScope((prev) => ({ ...prev, [pickScopeKey]: next.id }));
     }
@@ -161,7 +187,7 @@ export function PocketGuide({
 
   function handleCreated(created: PlaceWithRatings) {
     setPlaces((prev) => [created, ...prev]);
-    setServiceType(created.serviceType);
+    setSection(created.serviceType);
     if (isPendingPlace(created)) {
       const scopeKey = `${created.groupId}:${created.serviceType}`;
       setPickedByScope((prev) => ({ ...prev, [scopeKey]: created.id }));
@@ -477,9 +503,9 @@ export function PocketGuide({
             </div>
           )}
 
-          {/* Service Type Switcher */}
+          {/* Section Switcher (Salidas / Delivery / Heladerías / A repetir) */}
           <div
-            className="mb-3.5 grid grid-cols-3 gap-1 rounded-2xl border-2 p-1"
+            className="mb-3.5 grid grid-cols-2 gap-1 rounded-2xl border-2 p-1 sm:grid-cols-4"
             style={{
               borderColor: "var(--border)",
               backgroundColor: "var(--surface)",
@@ -488,7 +514,7 @@ export function PocketGuide({
             aria-label="Apartado"
           >
             {SERVICE_TYPES.map((type) => {
-              const active = serviceType === type;
+              const active = section === type;
               const count = serviceCounts[type];
               const Icon =
                 type === "dine_in"
@@ -502,8 +528,8 @@ export function PocketGuide({
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setServiceType(type)}
-                  className="pressable inline-flex items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[11.5px] leading-none font-bold whitespace-nowrap sm:gap-1.5 sm:px-2 sm:text-[13px]"
+                  onClick={() => setSection(type)}
+                  className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[12px] leading-none font-bold whitespace-nowrap sm:text-[12.5px]"
                   style={{
                     backgroundColor: active ? "var(--badge-bg)" : "transparent",
                     color: active ? "var(--badge-fg)" : "var(--fg-muted)",
@@ -515,6 +541,21 @@ export function PocketGuide({
                 </button>
               );
             })}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isRepeatSection}
+              onClick={() => setSection("repeat")}
+              className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[12px] leading-none font-bold whitespace-nowrap sm:text-[12.5px]"
+              style={{
+                backgroundColor: isRepeatSection ? "var(--badge-bg)" : "transparent",
+                color: isRepeatSection ? "var(--badge-fg)" : "var(--fg-muted)",
+              }}
+            >
+              <Repeat className="h-3.5 w-3.5 shrink-0" />
+              <span>A repetir</span>
+              <span className="tabular opacity-80">({repeatPlaces.length})</span>
+            </button>
           </div>
 
           {/* Roulette Decision Widget */}
@@ -530,26 +571,34 @@ export function PocketGuide({
               <div className="font-display text-[17px] leading-snug font-bold">
                 {pickedPlace
                   ? `${
-                      serviceType === "delivery"
-                        ? "Próximo pedido"
-                        : serviceType === "ice_cream"
-                          ? "Próxima heladería"
-                          : "Próxima salida"
+                      isRepeatSection
+                        ? "Para repetir"
+                        : section === "delivery"
+                          ? "Próximo pedido"
+                          : section === "ice_cream"
+                            ? "Próxima heladería"
+                            : "Próxima salida"
                     }: ${pickedPlace.name}`
-                  : "No quedan pendientes"}
+                  : isRepeatSection
+                    ? "Todavía no marcaste lugares"
+                    : "No quedan pendientes"}
               </div>
               <div className="mt-0.5 text-[13px]" style={{ color: "var(--highlight-muted)" }}>
                 {pickedPlace
-                  ? pickedPlace.meals.map((m) => MEAL_LABELS[m]).join(" o ")
-                  : serviceType === "delivery"
-                    ? "Sumá un lugar nuevo para pedir"
-                    : serviceType === "ice_cream"
-                      ? "Sumá una heladería nueva para probar"
-                      : "Sumá un lugar nuevo para probar"}
+                  ? isRepeatSection && pickedPlace.nextOrder
+                    ? `Próxima vez: ${pickedPlace.nextOrder}`
+                    : pickedPlace.meals.map((m) => MEAL_LABELS[m]).join(" o ")
+                  : isRepeatSection
+                    ? "Abrí cualquier lugar y tocá A repetir"
+                    : section === "delivery"
+                      ? "Sumá un lugar nuevo para pedir"
+                      : section === "ice_cream"
+                        ? "Sumá una heladería nueva para probar"
+                        : "Sumá un lugar nuevo para probar"}
               </div>
             </button>
 
-            {pendingCount > 1 && (
+            {(isRepeatSection ? repeatPlaces.length > 1 : pendingCount > 1) && (
               <button
                 type="button"
                 onClick={handleSpinRandom}
@@ -565,42 +614,44 @@ export function PocketGuide({
             )}
           </section>
 
-          {/* View Mode Tabs */}
-          <div
-            className={`mb-3 grid gap-2 ${showGapTab ? "grid-cols-3" : "grid-cols-2"}`}
-            role="tablist"
-          >
-            {(showGapTab
-              ? ([
-                  { key: "ranking", label: `Top (${ratedCount})` },
-                  { key: "pending", label: `Pendientes (${pendingCount})` },
-                  { key: "gap", label: `Polémicos (${gapCount})` },
-                ] as const)
-              : ([
-                  { key: "ranking", label: `Top (${ratedCount})` },
-                  { key: "pending", label: `Pendientes (${pendingCount})` },
-                ] as const)
-            ).map((tab) => {
-              const active = effectiveMode === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setMode(tab.key)}
-                  className="pressable tabular rounded-xl border-2 px-1.5 py-2.5 text-center text-[12px] font-bold whitespace-nowrap sm:px-2 sm:text-[13px]"
-                  style={{
-                    borderColor: "var(--border)",
-                    backgroundColor: active ? "var(--fg)" : "var(--surface)",
-                    color: active ? "var(--bg)" : "var(--fg)",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* View Mode Tabs (hidden inside A repetir so all marked places appear together) */}
+          {!isRepeatSection && (
+            <div
+              className={`mb-3 grid gap-2 ${showGapTab ? "grid-cols-3" : "grid-cols-2"}`}
+              role="tablist"
+            >
+              {(showGapTab
+                ? ([
+                    { key: "ranking", label: `Top (${ratedCount})` },
+                    { key: "pending", label: `Pendientes (${pendingCount})` },
+                    { key: "gap", label: `Polémicos (${gapCount})` },
+                  ] as const)
+                : ([
+                    { key: "ranking", label: `Top (${ratedCount})` },
+                    { key: "pending", label: `Pendientes (${pendingCount})` },
+                  ] as const)
+              ).map((tab) => {
+                const active = effectiveMode === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setMode(tab.key)}
+                    className="pressable tabular rounded-xl border-2 px-1.5 py-2.5 text-center text-[12px] font-bold whitespace-nowrap sm:px-2 sm:text-[13px]"
+                    style={{
+                      borderColor: "var(--border)",
+                      backgroundColor: active ? "var(--fg)" : "var(--surface)",
+                      color: active ? "var(--bg)" : "var(--fg)",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Meal Filters */}
           <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por momento">
@@ -641,8 +692,36 @@ export function PocketGuide({
             {visiblePlaces.map((place) => {
               const avg = computeAverage(place.ratings);
               const gap = computeGap(place.ratings);
-              const isHighlighted = effectiveMode === "pending" && pickedPlace?.id === place.id;
-              const notes = place.ratings.filter((r) => r.note.trim().length > 0);
+              const isHighlighted =
+                (isRepeatSection || effectiveMode === "pending") && pickedPlace?.id === place.id;
+
+              const visitReviewItems = place.visits.flatMap((visit) => {
+                const dateLabel = formatVisitDate(visit.visitedAt);
+                return visit.entries
+                  .filter((e) => e.dish.trim().length > 0 || e.note.trim().length > 0)
+                  .map((e) => ({
+                    id: e.id,
+                    userName: e.userName,
+                    userAccent: e.userAccent,
+                    dish: e.dish.trim(),
+                    note: e.note.trim(),
+                    dateLabel,
+                  }));
+              });
+
+              const reviewItems =
+                visitReviewItems.length > 0
+                  ? visitReviewItems
+                  : place.ratings
+                      .filter((r) => r.note.trim().length > 0)
+                      .map((r) => ({
+                        id: r.id,
+                        userName: r.userName,
+                        userAccent: r.userAccent,
+                        dish: "",
+                        note: r.note.trim(),
+                        dateLabel: "",
+                      }));
 
               return (
                 <div
@@ -668,13 +747,38 @@ export function PocketGuide({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-display text-[18px] leading-snug font-bold">
-                        {place.name}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="font-display text-[18px] leading-snug font-bold">
+                          {place.name}
+                        </div>
+                        {place.repeatMarked && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold"
+                            style={{
+                              backgroundColor: "var(--highlight-bg)",
+                              color: "var(--highlight-fg)",
+                            }}
+                          >
+                            <Repeat className="h-3 w-3" />
+                            A repetir
+                          </span>
+                        )}
                       </div>
                       <div
                         className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]"
                         style={{ color: "var(--fg-muted)" }}
                       >
+                        {isRepeatSection && (
+                          <span
+                            className="rounded-md px-1.5 py-0.5 text-[11px] font-bold"
+                            style={{
+                              backgroundColor: "var(--pill-bg)",
+                              color: "var(--pill-fg)",
+                            }}
+                          >
+                            {SERVICE_LABELS[place.serviceType]}
+                          </span>
+                        )}
                         <span>
                           {place.meals.map((m) => MEAL_LABELS[m]).join(" / ")}
                           {place.address ? ` en ${place.address}` : ""}
@@ -713,7 +817,7 @@ export function PocketGuide({
                           color: "var(--badge-fg)",
                         }}
                       >
-                        {effectiveMode === "gap" && gap !== null
+                        {!isRepeatSection && effectiveMode === "gap" && gap !== null
                           ? `${formatScore(gap)} diff`
                           : formatScore(avg)}
                       </span>
@@ -729,6 +833,25 @@ export function PocketGuide({
                       </span>
                     )}
                   </div>
+
+                  {place.repeatMarked && place.nextOrder.trim().length > 0 && (
+                    <div
+                      className="flex items-start gap-1.5 rounded-xl border px-3 py-1.5 text-[12.5px]"
+                      style={{
+                        borderColor: "var(--border-soft)",
+                        backgroundColor: "var(--bg)",
+                      }}
+                    >
+                      <Repeat
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                        style={{ color: "var(--fg-muted)" }}
+                      />
+                      <div>
+                        <span className="font-bold">Próxima vez: </span>
+                        <span>{place.nextOrder}</span>
+                      </div>
+                    </div>
+                  )}
 
                   {place.ratings.length > 0 && (
                     <div className="tabular flex flex-col gap-1.5">
@@ -791,19 +914,55 @@ export function PocketGuide({
                     </div>
                   )}
 
-                  {notes.length > 0 && (
+                  {reviewItems.length > 0 && (
                     <div
-                      className="flex flex-col gap-1 rounded-xl px-3 py-2 text-[13px]"
+                      className="flex flex-col gap-2 rounded-xl px-3 py-2.5 text-[13px]"
                       style={{ backgroundColor: "var(--surface-soft)" }}
                     >
-                      {notes.map((r) => (
-                        <div key={r.id}>
-                          <strong style={{ color: accentCssVar(r.userAccent) }}>
-                            {r.userName}:
-                          </strong>{" "}
-                          {r.note}
-                        </div>
-                      ))}
+                      {reviewItems.map((item, itemIdx) => {
+                        const authorColor = accentCssVar(item.userAccent);
+                        return (
+                          <div
+                            key={item.id}
+                            className={itemIdx > 0 ? "border-t pt-2" : undefined}
+                            style={itemIdx > 0 ? { borderColor: "var(--border-soft)" } : undefined}
+                          >
+                            {item.dish ? (
+                              <>
+                                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                                  <div className="font-display text-[13.5px] leading-snug font-bold">
+                                    {item.dish}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[11.5px] font-bold">
+                                    <span style={{ color: authorColor }}>{item.userName}</span>
+                                    {item.dateLabel && (
+                                      <span
+                                        className="font-semibold"
+                                        style={{ color: "var(--fg-muted)" }}
+                                      >
+                                        {item.dateLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {item.note && (
+                                  <p
+                                    className="mt-0.5 mb-0 text-[12.5px] leading-snug"
+                                    style={{ color: "var(--fg-muted)" }}
+                                  >
+                                    {item.note}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <div>
+                                <strong style={{ color: authorColor }}>{item.userName}:</strong>{" "}
+                                {item.note}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -815,7 +974,9 @@ export function PocketGuide({
                 className="zine-card p-6 text-center text-[14px]"
                 style={{ color: "var(--fg-muted)" }}
               >
-                No hay lugares para este filtro.
+                {isRepeatSection
+                  ? "Todavía no hay lugares marcados como A repetir."
+                  : "No hay lugares para este filtro."}
               </div>
             )}
           </section>
@@ -837,7 +998,7 @@ export function PocketGuide({
         open={addOpen}
         groupId={activeGroup?.id ?? null}
         groupName={activeGroup?.name ?? ""}
-        defaultServiceType={serviceType}
+        defaultServiceType={activeServiceType}
         onClose={() => setAddOpen(false)}
         onCreated={handleCreated}
       />

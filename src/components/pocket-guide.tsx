@@ -827,6 +827,7 @@ export function PocketGuide({
         currentUserId={currentUser.id}
         currentUserName={currentUser.name}
         currentUserAccent={currentUser.accentColor}
+        groupMembers={activeGroup?.members ?? []}
         onClose={() => setSelectedPlaceId(null)}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}

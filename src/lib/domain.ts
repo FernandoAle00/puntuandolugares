@@ -118,6 +118,7 @@ export const updateVisitSchema = z.object({
 });
 
 export const upsertVisitEntrySchema = z.object({
+  userId: z.string().min(1).optional(),
   dish: z.string().trim().max(240, "Texto de comida demasiado largo").default(""),
   score: scoreSchema,
   note: z.string().trim().max(600, "La reseña es demasiado larga").default(""),

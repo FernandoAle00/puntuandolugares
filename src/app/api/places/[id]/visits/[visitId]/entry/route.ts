@@ -40,14 +40,15 @@ export async function PUT(request: Request, context: RouteContext) {
   return NextResponse.json({ place: result.place });
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
   const { id, visitId } = await context.params;
-  const result = await deleteVisitEntry(id, visitId, session.user.id);
+  const targetUserId = new URL(request.url).searchParams.get("userId") || undefined;
+  const result = await deleteVisitEntry(id, visitId, session.user.id, targetUserId);
   if (result.status === "not_found") {
     return NextResponse.json({ error: "Visita no encontrada" }, { status: 404 });
   }

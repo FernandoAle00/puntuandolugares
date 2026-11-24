@@ -585,12 +585,13 @@ export async function deletePlaceVisit(
 }
 
 /**
- * Saves or updates the caller's own dish, score, and note inside a shared visit.
+ * Saves or updates a group member's dish, score, and note inside a shared visit.
+ * Any member of the place's group can edit their own entry or another group member's entry.
  */
 export async function upsertVisitEntry(
   placeId: string,
   visitId: string,
-  userId: string,
+  callerId: string,
   input: UpsertVisitEntryInput,
 ): Promise<
   { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
@@ -604,14 +605,20 @@ export async function upsertVisitEntry(
 
   if (!row) return { status: "not_found" };
 
-  const allowed = await isUserInGroup(userId, row.groupId);
-  if (!allowed) return { status: "forbidden" };
+  const callerAllowed = await isUserInGroup(callerId, row.groupId);
+  if (!callerAllowed) return { status: "forbidden" };
+
+  const targetUserId = input.userId ?? callerId;
+  if (targetUserId !== callerId) {
+    const targetAllowed = await isUserInGroup(targetUserId, row.groupId);
+    if (!targetAllowed) return { status: "forbidden" };
+  }
 
   const now = new Date();
   const [existing] = await db
     .select({ id: visitEntry.id })
     .from(visitEntry)
-    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, userId)))
+    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, targetUserId)))
     .limit(1);
 
   if (existing) {
@@ -628,7 +635,7 @@ export async function upsertVisitEntry(
     await db.insert(visitEntry).values({
       id: crypto.randomUUID(),
       visitId,
-      userId,
+      userId: targetUserId,
       dish: input.dish,
       score: input.score,
       note: input.note,
@@ -642,12 +649,13 @@ export async function upsertVisitEntry(
 }
 
 /**
- * Removes the caller's entry from a visit, cleaning up the visit only if no entries or photos remain.
+ * Removes a group member's entry from a visit, cleaning up the visit only if no entries or photos remain.
  */
 export async function deleteVisitEntry(
   placeId: string,
   visitId: string,
-  userId: string,
+  callerId: string,
+  requestedUserId?: string,
 ): Promise<
   { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
 > {
@@ -660,12 +668,18 @@ export async function deleteVisitEntry(
 
   if (!row) return { status: "not_found" };
 
-  const allowed = await isUserInGroup(userId, row.groupId);
-  if (!allowed) return { status: "forbidden" };
+  const callerAllowed = await isUserInGroup(callerId, row.groupId);
+  if (!callerAllowed) return { status: "forbidden" };
+
+  const targetUserId = requestedUserId ?? callerId;
+  if (targetUserId !== callerId) {
+    const targetAllowed = await isUserInGroup(targetUserId, row.groupId);
+    if (!targetAllowed) return { status: "forbidden" };
+  }
 
   await db
     .delete(visitEntry)
-    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, userId)));
+    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, targetUserId)));
 
   const [remainingEntry, remainingPhoto] = await Promise.all([
     db.select({ id: visitEntry.id }).from(visitEntry).where(eq(visitEntry.visitId, visitId)).limit(1),

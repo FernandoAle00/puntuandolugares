@@ -26,6 +26,7 @@ import {
   SERVICE_FULL_LABELS,
   SERVICE_LABELS,
   SERVICE_TYPES,
+  type GroupMemberSummary,
   type PlacePhotoEntry,
   type PlaceVisit,
   type PlaceWithRatings,
@@ -150,6 +151,7 @@ interface PlaceSheetProps {
   currentUserId: string;
   currentUserName: string;
   currentUserAccent: AccentColor;
+  groupMembers: readonly GroupMemberSummary[];
   onClose: () => void;
   onUpdated: (place: PlaceWithRatings) => void;
   onDeleted: (placeId: string) => void;
@@ -160,6 +162,7 @@ export function PlaceSheet({
   currentUserId,
   currentUserName,
   currentUserAccent,
+  groupMembers,
   onClose,
   onUpdated,
   onDeleted,
@@ -178,8 +181,13 @@ export function PlaceSheet({
   const [newVisitScore, setNewVisitScore] = useState(8);
   const [newVisitNote, setNewVisitNote] = useState("");
 
-  // Per-visit entry editor state
-  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  // Per-visit entry editor state (supports editing any member of the group)
+  const [editingTarget, setEditingTarget] = useState<{
+    visitId: string;
+    userId: string;
+    userName: string;
+    userAccent: AccentColor;
+  } | null>(null);
   const [entryDish, setEntryDish] = useState("");
   const [entryScore, setEntryScore] = useState(8);
   const [entryNote, setEntryNote] = useState("");
@@ -211,7 +219,7 @@ export function PlaceSheet({
     setNewVisitDish("");
     setNewVisitScore(8);
     setNewVisitNote("");
-    setEditingVisitId(null);
+    setEditingTarget(null);
     setEditingDateVisitId(null);
     setConfirmDeleteVisitId(null);
     setPhotoCaptions({});
@@ -254,12 +262,20 @@ export function PlaceSheet({
     });
   }
 
-  function startEditingEntry(visit: PlaceVisit) {
-    const mine = visit.entries.find((e) => e.userId === currentUserId);
-    setEditingVisitId(visit.id);
-    setEntryDish(mine?.dish ?? "");
-    setEntryScore(mine?.score ?? 8);
-    setEntryNote(mine?.note ?? "");
+  function startEditingEntry(
+    visit: PlaceVisit,
+    target: { userId: string; userName: string; userAccent: AccentColor },
+  ) {
+    const existing = visit.entries.find((e) => e.userId === target.userId);
+    setEditingTarget({
+      visitId: visit.id,
+      userId: target.userId,
+      userName: target.userName,
+      userAccent: target.userAccent,
+    });
+    setEntryDish(existing?.dish ?? "");
+    setEntryScore(existing?.score ?? 8);
+    setEntryNote(existing?.note ?? "");
     setError(null);
   }
 
@@ -301,15 +317,16 @@ export function PlaceSheet({
     }
   }
 
-  async function handleSaveEntry(visitId: string) {
-    if (!place) return;
+  async function handleSaveEntry() {
+    if (!place || !editingTarget) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/places/${place.id}/visits/${visitId}/entry`, {
+      const res = await fetch(`/api/places/${place.id}/visits/${editingTarget.visitId}/entry`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userId: editingTarget.userId,
           dish: entryDish,
           score: entryScore,
           note: entryNote,
@@ -321,12 +338,12 @@ export function PlaceSheet({
       } | null;
 
       if (!res.ok || !data?.place) {
-        setError(data?.error || "No se pudo guardar tu comida");
+        setError(data?.error || "No se pudo guardar la comida");
         setBusy(false);
         return;
       }
       onUpdated(data.place);
-      setEditingVisitId(null);
+      setEditingTarget(null);
       setBusy(false);
     } catch {
       setError("Error de conexión");
@@ -334,12 +351,13 @@ export function PlaceSheet({
     }
   }
 
-  async function handleDeleteEntry(visitId: string) {
-    if (!place) return;
+  async function handleDeleteEntry() {
+    if (!place || !editingTarget) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/places/${place.id}/visits/${visitId}/entry`, {
+      const url = `/api/places/${place.id}/visits/${editingTarget.visitId}/entry?userId=${encodeURIComponent(editingTarget.userId)}`;
+      const res = await fetch(url, {
         method: "DELETE",
       });
       const data = (await res.json().catch(() => null)) as {
@@ -348,12 +366,12 @@ export function PlaceSheet({
       } | null;
 
       if (!res.ok || !data?.place) {
-        setError(data?.error || "No se pudo quitar tu puntaje");
+        setError(data?.error || "No se pudo quitar el puntaje");
         setBusy(false);
         return;
       }
       onUpdated(data.place);
-      setEditingVisitId(null);
+      setEditingTarget(null);
       setBusy(false);
     } catch {
       setError("Error de conexión");
@@ -414,7 +432,7 @@ export function PlaceSheet({
       }
       onUpdated(data.place);
       setConfirmDeleteVisitId(null);
-      if (editingVisitId === visitId) setEditingVisitId(null);
+      if (editingTarget?.visitId === visitId) setEditingTarget(null);
       setBusy(false);
     } catch {
       setError("Error de conexión");
@@ -943,8 +961,27 @@ export function PlaceSheet({
               const visitNumber = place.visits.length - idx;
               const dateLabel = formatVisitDate(visit.visitedAt);
               const visitAvg = computeAverage(visit.entries);
-              const myEntry = visit.entries.find((e) => e.userId === currentUserId);
-              const isEditingThis = editingVisitId === visit.id;
+              const entryUserIds = new Set(visit.entries.map((e) => e.userId));
+              const availableMembers =
+                groupMembers.length > 0
+                  ? groupMembers
+                  : [
+                      {
+                        id: currentUserId,
+                        name: currentUserName,
+                        email: "",
+                        accentColor: currentUserAccent,
+                        role: "owner" as const,
+                      },
+                    ];
+              const missingMembers = availableMembers.filter((m) => !entryUserIds.has(m.id));
+              const isEditingThis = editingTarget?.visitId === visit.id;
+              const editingHasExisting = isEditingThis
+                ? entryUserIds.has(editingTarget.userId)
+                : false;
+              const editingColor = isEditingThis
+                ? accentCssVar(editingTarget.userAccent)
+                : myColor;
               const isEditingDate = editingDateVisitId === visit.id;
               const isUploadingHere = uploadingVisitId === visit.id;
               const captionVal = photoCaptions[visit.id] ?? "";
@@ -961,14 +998,25 @@ export function PlaceSheet({
                       <span className="font-display text-[15px] font-bold">
                         {visitLabelCap} #{visitNumber}
                       </span>
-                      {dateLabel && (
-                        <span
-                          className="text-[12px] font-semibold"
-                          style={{ color: "var(--fg-muted)" }}
-                        >
-                          {dateLabel}
-                        </span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isEditingDate) {
+                            setEditingDateVisitId(null);
+                          } else {
+                            setEditingDateVisitId(visit.id);
+                            setEditDateValue(visit.visitedAt);
+                          }
+                        }}
+                        className="pressable inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[12px] font-semibold"
+                        style={{
+                          backgroundColor: isEditingDate ? "var(--surface-soft)" : "transparent",
+                          color: "var(--fg-muted)",
+                        }}
+                      >
+                        <Calendar className="h-3 w-3" />
+                        <span>{dateLabel || "Agregar fecha"}</span>
+                      </button>
                       {visitAvg !== null && visit.entries.length > 1 && (
                         <span
                           className="tabular rounded-lg px-2 py-0.5 text-[12px] font-bold"
@@ -983,23 +1031,6 @@ export function PlaceSheet({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isEditingDate) {
-                            setEditingDateVisitId(null);
-                          } else {
-                            setEditingDateVisitId(visit.id);
-                            setEditDateValue(visit.visitedAt);
-                          }
-                        }}
-                        aria-label="Cambiar fecha"
-                        title="Cambiar fecha"
-                        className="pressable inline-flex h-7 w-7 items-center justify-center rounded-lg"
-                        style={{ color: "var(--fg-muted)" }}
-                      >
-                        <Calendar className="h-3.5 w-3.5" />
-                      </button>
                       <button
                         type="button"
                         disabled={busy}
@@ -1049,17 +1080,43 @@ export function PlaceSheet({
                     <div className="flex flex-col gap-2">
                       {visit.entries.map((entry) => {
                         const color = accentCssVar(entry.userAccent);
+                        const isBeingEdited =
+                          isEditingThis && editingTarget?.userId === entry.userId;
                         return (
                           <div
                             key={entry.id}
                             className="flex flex-col gap-0.5 rounded-xl px-3 py-2"
-                            style={{ backgroundColor: "var(--surface)" }}
+                            style={{
+                              backgroundColor: "var(--surface)",
+                              outline: isBeingEdited ? `2px solid ${color}` : undefined,
+                            }}
                           >
                             <div className="flex items-center justify-between gap-2 text-[13px] font-bold">
                               <span style={{ color }}>{entry.userName}</span>
-                              <span className="tabular" style={{ color }}>
-                                {formatScore(entry.score)} / 10
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="tabular" style={{ color }}>
+                                  {formatScore(entry.score)} / 10
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    startEditingEntry(visit, {
+                                      userId: entry.userId,
+                                      userName: entry.userName,
+                                      userAccent: entry.userAccent,
+                                    })
+                                  }
+                                  aria-label={`Editar comida de ${entry.userName}`}
+                                  title={`Editar comida de ${entry.userName}`}
+                                  className="pressable inline-flex h-6 w-6 items-center justify-center rounded-md"
+                                  style={{
+                                    backgroundColor: "var(--pill-bg)",
+                                    color: "var(--fg-muted)",
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
                             {entry.dish && (
                               <div className="text-[13px] font-semibold">{entry.dish}</div>
@@ -1078,11 +1135,11 @@ export function PlaceSheet({
                     </div>
                   )}
 
-                  {/* Current user entry editor toggle or inline form */}
-                  {isEditingThis ? (
+                  {/* Inline entry editor (for any group member) */}
+                  {isEditingThis && editingTarget && (
                     <div
                       className="flex flex-col gap-3 rounded-xl border-2 p-3"
-                      style={{ borderColor: myColor, backgroundColor: "var(--surface)" }}
+                      style={{ borderColor: editingColor, backgroundColor: "var(--surface)" }}
                     >
                       <div className="flex flex-col gap-1">
                         <label
@@ -1090,7 +1147,9 @@ export function PlaceSheet({
                           className="text-[12px] font-semibold"
                           style={{ color: "var(--fg-muted)" }}
                         >
-                          Qué comiste ({currentUserName})
+                          {editingTarget.userId === currentUserId
+                            ? `Qué comiste (${editingTarget.userName})`
+                            : `Qué comió ${editingTarget.userName}`}
                         </label>
                         <input
                           id={`dish-${visit.id}`}
@@ -1104,7 +1163,7 @@ export function PlaceSheet({
 
                       <ScorePicker
                         score={entryScore}
-                        color={myColor}
+                        color={editingColor}
                         onChange={setEntryScore}
                       />
 
@@ -1117,11 +1176,11 @@ export function PlaceSheet({
                       />
 
                       <div className="flex items-center gap-2">
-                        {myEntry && (
+                        {editingHasExisting && (
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => handleDeleteEntry(visit.id)}
+                            onClick={handleDeleteEntry}
                             className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
                             style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
                           >
@@ -1131,7 +1190,7 @@ export function PlaceSheet({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => setEditingVisitId(null)}
+                          onClick={() => setEditingTarget(null)}
                           className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
                           style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
                         >
@@ -1140,7 +1199,7 @@ export function PlaceSheet({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => handleSaveEntry(visit.id)}
+                          onClick={handleSaveEntry}
                           className="pressable flex-1 rounded-xl px-3 py-2 text-[13px] font-bold disabled:opacity-60"
                           style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
                         >
@@ -1148,19 +1207,37 @@ export function PlaceSheet({
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startEditingEntry(visit)}
-                      className="pressable self-start rounded-full border-2 px-3 py-1 text-[12px] font-bold"
-                      style={{
-                        borderColor: myEntry ? "var(--border-soft)" : myColor,
-                        backgroundColor: "var(--surface)",
-                        color: myEntry ? "var(--fg)" : myColor,
-                      }}
-                    >
-                      {myEntry ? "Editar lo que comí" : "+ Sumar lo que comí"}
-                    </button>
+                  )}
+
+                  {/* Quick buttons to add missing group members' entries on this visit */}
+                  {!isEditingThis && missingMembers.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {missingMembers.map((member) => {
+                        const memberColor = accentCssVar(member.accentColor);
+                        const isMe = member.id === currentUserId;
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            onClick={() =>
+                              startEditingEntry(visit, {
+                                userId: member.id,
+                                userName: member.name,
+                                userAccent: member.accentColor,
+                              })
+                            }
+                            className="pressable rounded-full border-2 px-3 py-1 text-[12px] font-bold"
+                            style={{
+                              borderColor: isMe ? memberColor : "var(--border-soft)",
+                              backgroundColor: "var(--surface)",
+                              color: isMe ? memberColor : "var(--fg)",
+                            }}
+                          >
+                            {isMe ? "+ Sumar lo que comí" : `+ Sumar de ${member.name}`}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
 
                   {/* Visit Photos */}

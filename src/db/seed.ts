@@ -6,8 +6,10 @@ import {
   friendship,
   groupMember,
   place,
+  placeVisit,
   rating,
   user,
+  visitEntry,
   type AccentColor,
   type MealType,
 } from "@/db/schema";
@@ -297,24 +299,67 @@ async function main() {
       { userId: juliId, data: item.juli },
     ];
 
-    for (const entry of entries) {
-      if (!entry.data) continue;
-      const [existingRating] = await db
-        .select({ id: rating.id })
-        .from(rating)
-        .where(and(eq(rating.placeId, placeId), eq(rating.userId, entry.userId)))
+    const ratedEntries = entries.filter(
+      (e): e is { userId: string; data: { score: number; note?: string } } => Boolean(e.data),
+    );
+
+    if (ratedEntries.length > 0) {
+      const [existingVisit] = await db
+        .select({ id: placeVisit.id })
+        .from(placeVisit)
+        .where(eq(placeVisit.placeId, placeId))
         .limit(1);
 
-      if (!existingRating) {
-        await db.insert(rating).values({
-          id: crypto.randomUUID(),
+      let visitId = existingVisit?.id;
+      if (!visitId) {
+        visitId = crypto.randomUUID();
+        await db.insert(placeVisit).values({
+          id: visitId,
           placeId,
-          userId: entry.userId,
-          score: entry.data.score,
-          note: entry.data.note ?? "",
+          visitedAt: "",
+          createdBy: ferId,
           createdAt: now,
           updatedAt: now,
         });
+      }
+
+      for (const entry of ratedEntries) {
+        const [existingEntry] = await db
+          .select({ id: visitEntry.id })
+          .from(visitEntry)
+          .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, entry.userId)))
+          .limit(1);
+
+        if (!existingEntry) {
+          await db.insert(visitEntry).values({
+            id: crypto.randomUUID(),
+            visitId,
+            userId: entry.userId,
+            dish: "",
+            score: entry.data.score,
+            note: entry.data.note ?? "",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        const [existingRating] = await db
+          .select({ id: rating.id })
+          .from(rating)
+          .where(and(eq(rating.placeId, placeId), eq(rating.userId, entry.userId)))
+          .limit(1);
+
+        if (!existingRating) {
+          await db.insert(rating).values({
+            id: crypto.randomUUID(),
+            placeId,
+            userId: entry.userId,
+            score: entry.data.score,
+            note: entry.data.note ?? "",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
       }
     }
   }

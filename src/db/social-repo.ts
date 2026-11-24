@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
-import { foodGroup, friendship, groupMember, place, rating, user } from "@/db/schema";
+import { foodGroup, friendship, groupMember, place, placeVisit, rating, user, visitEntry } from "@/db/schema";
 import type {
   CreateGroupInput,
   FriendItem,
@@ -457,6 +457,24 @@ export async function addFriendToGroup(
                 inArray(rating.placeId, placeIds),
               ),
             );
+
+          const groupVisits = await tx
+            .select({ id: placeVisit.id })
+            .from(placeVisit)
+            .where(inArray(placeVisit.placeId, placeIds));
+
+          const visitIds = groupVisits.map((v) => v.id);
+          if (visitIds.length > 0) {
+            await tx
+              .update(visitEntry)
+              .set({ userId: friendUserId, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(visitEntry.userId, placeholderMember.userId),
+                  inArray(visitEntry.visitId, visitIds),
+                ),
+              );
+          }
         }
 
         // Give the incoming friend Juli's distinct orange accent if it still has the default teal

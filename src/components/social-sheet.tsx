@@ -209,8 +209,12 @@ export function SocialSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
-      style={{ backgroundColor: "var(--backdrop)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--backdrop)",
+        paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -219,16 +223,8 @@ export function SocialSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Amigos y grupos"
-        className="zine-sheet max-h-[90dvh] w-full max-w-[500px] overflow-y-auto px-5 pt-3 pb-6"
-        style={{
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
-        }}
+        className="zine-sheet max-h-[85dvh] w-full max-w-[500px] overflow-y-auto px-5 py-5"
       >
-        <div
-          className="mx-auto mb-3 h-1.5 w-10 rounded-full sm:hidden"
-          style={{ backgroundColor: "var(--border-soft)" }}
-        />
-
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="font-display m-0 text-[22px] font-bold">Amigos y grupos</h2>
           <button

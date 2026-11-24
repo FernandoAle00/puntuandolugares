@@ -1,14 +1,29 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { groupMember, place, placePhoto, rating, user } from "@/db/schema";
-import type {
-  CreatePlaceInput,
-  PlacePhotoEntry,
-  PlaceWithRatings,
-  RatingEntry,
-  UpdatePlaceInput,
-  UpsertRatingInput,
+import {
+  groupMember,
+  place,
+  placePhoto,
+  placeVisit,
+  rating,
+  user,
+  visitEntry,
+} from "@/db/schema";
+import {
+  deriveRatingsFromVisits,
+  getTodayIsoDate,
+  type CreatePlaceInput,
+  type CreateVisitInput,
+  type PlacePhotoEntry,
+  type PlaceVisit,
+  type PlaceWithRatings,
+  type RatingEntry,
+  type UpdatePlaceInput,
+  type UpdateVisitInput,
+  type UpsertRatingInput,
+  type UpsertVisitEntryInput,
+  type VisitEntryItem,
 } from "@/lib/domain";
 import { removePhotoFile } from "@/lib/photos";
 
@@ -21,9 +36,18 @@ export async function isUserInGroup(userId: string, groupId: string): Promise<bo
   return Boolean(row);
 }
 
+function sortVisitsNewestFirst(a: PlaceVisit, b: PlaceVisit): number {
+  if (a.visitedAt && b.visitedAt && a.visitedAt !== b.visitedAt) {
+    return b.visitedAt.localeCompare(a.visitedAt);
+  }
+  if (a.visitedAt && !b.visitedAt) return -1;
+  if (!a.visitedAt && b.visitedAt) return 1;
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 /**
  * Fetches all places belonging to groups the authenticated user is a member of,
- * including ratings and photos in flat queries (no N+1).
+ * including visits, per-person visit entries, derived ratings, and photos in flat queries (no N+1).
  */
 export async function listPlacesForUser(
   userId: string,
@@ -54,7 +78,12 @@ export async function listPlacesForUser(
   if (places.length === 0) return [];
 
   const placeIds = places.map((p) => p.id);
-  const [ratingRows, photoRows] = await Promise.all([
+  const [visitRows, legacyRatingRows, photoRows] = await Promise.all([
+    db
+      .select()
+      .from(placeVisit)
+      .where(inArray(placeVisit.placeId, placeIds))
+      .orderBy(desc(placeVisit.visitedAt), desc(placeVisit.createdAt)),
     db
       .select({
         id: rating.id,
@@ -73,6 +102,7 @@ export async function listPlacesForUser(
       .select({
         id: placePhoto.id,
         placeId: placePhoto.placeId,
+        visitId: placePhoto.visitId,
         caption: placePhoto.caption,
         createdAt: placePhoto.createdAt,
         userName: user.name,
@@ -83,8 +113,83 @@ export async function listPlacesForUser(
       .orderBy(asc(placePhoto.createdAt)),
   ]);
 
-  const ratingsByPlace = new Map<string, RatingEntry[]>();
-  for (const row of ratingRows) {
+  const visitIds = visitRows.map((v) => v.id);
+  const entryRows =
+    visitIds.length > 0
+      ? await db
+          .select({
+            id: visitEntry.id,
+            visitId: visitEntry.visitId,
+            userId: visitEntry.userId,
+            dish: visitEntry.dish,
+            score: visitEntry.score,
+            note: visitEntry.note,
+            updatedAt: visitEntry.updatedAt,
+            userName: user.name,
+            userAccent: user.accentColor,
+          })
+          .from(visitEntry)
+          .innerJoin(user, eq(visitEntry.userId, user.id))
+          .where(inArray(visitEntry.visitId, visitIds))
+      : [];
+
+  const entriesByVisit = new Map<string, VisitEntryItem[]>();
+  for (const row of entryRows) {
+    const item: VisitEntryItem = {
+      id: row.id,
+      userId: row.userId,
+      userName: row.userName,
+      userAccent: row.userAccent,
+      dish: row.dish,
+      score: row.score,
+      note: row.note,
+      updatedAt: row.updatedAt.toISOString(),
+    };
+    const bucket = entriesByVisit.get(row.visitId);
+    if (bucket) bucket.push(item);
+    else entriesByVisit.set(row.visitId, [item]);
+  }
+
+  const photosByPlace = new Map<string, PlacePhotoEntry[]>();
+  const photosByVisit = new Map<string, PlacePhotoEntry[]>();
+  for (const row of photoRows) {
+    const entry: PlacePhotoEntry = {
+      id: row.id,
+      visitId: row.visitId ?? null,
+      url: `/api/photos/${row.id}`,
+      caption: row.caption,
+      uploadedBy: row.userName ?? null,
+      createdAt: row.createdAt.toISOString(),
+    };
+    const placeBucket = photosByPlace.get(row.placeId);
+    if (placeBucket) placeBucket.push(entry);
+    else photosByPlace.set(row.placeId, [entry]);
+
+    if (row.visitId) {
+      const visitBucket = photosByVisit.get(row.visitId);
+      if (visitBucket) visitBucket.push(entry);
+      else photosByVisit.set(row.visitId, [entry]);
+    }
+  }
+
+  const visitsByPlace = new Map<string, PlaceVisit[]>();
+  for (const row of visitRows) {
+    const visit: PlaceVisit = {
+      id: row.id,
+      visitedAt: row.visitedAt,
+      createdAt: row.createdAt.toISOString(),
+      entries: (entriesByVisit.get(row.id) ?? []).sort((a, b) =>
+        a.userName.localeCompare(b.userName, "es"),
+      ),
+      photos: photosByVisit.get(row.id) ?? [],
+    };
+    const bucket = visitsByPlace.get(row.placeId);
+    if (bucket) bucket.push(visit);
+    else visitsByPlace.set(row.placeId, [visit]);
+  }
+
+  const legacyRatingsByPlace = new Map<string, RatingEntry[]>();
+  for (const row of legacyRatingRows) {
     const entry: RatingEntry = {
       id: row.id,
       userId: row.userId,
@@ -94,45 +199,46 @@ export async function listPlacesForUser(
       note: row.note,
       updatedAt: row.updatedAt.toISOString(),
     };
-    const bucket = ratingsByPlace.get(row.placeId);
+    const bucket = legacyRatingsByPlace.get(row.placeId);
     if (bucket) bucket.push(entry);
-    else ratingsByPlace.set(row.placeId, [entry]);
+    else legacyRatingsByPlace.set(row.placeId, [entry]);
   }
 
-  const photosByPlace = new Map<string, PlacePhotoEntry[]>();
-  for (const row of photoRows) {
-    const entry: PlacePhotoEntry = {
-      id: row.id,
-      url: `/api/photos/${row.id}`,
-      caption: row.caption,
-      uploadedBy: row.userName ?? null,
-      createdAt: row.createdAt.toISOString(),
+  return places.map((p) => {
+    const visits = (visitsByPlace.get(p.id) ?? []).sort(sortVisitsNewestFirst);
+    const derived = deriveRatingsFromVisits(visits);
+    const ratings =
+      visits.length > 0
+        ? derived
+        : (legacyRatingsByPlace.get(p.id) ?? []).sort((a, b) =>
+            a.userName.localeCompare(b.userName, "es"),
+          );
+
+    return {
+      id: p.id,
+      groupId: p.groupId,
+      name: p.name,
+      address: p.address,
+      serviceType: p.serviceType,
+      meals: p.meals,
+      createdAt: p.createdAt.toISOString(),
+      ratings,
+      visits,
+      photos: photosByPlace.get(p.id) ?? [],
     };
-    const bucket = photosByPlace.get(row.placeId);
-    if (bucket) bucket.push(entry);
-    else photosByPlace.set(row.placeId, [entry]);
-  }
-
-  return places.map((p) => ({
-    id: p.id,
-    groupId: p.groupId,
-    name: p.name,
-    address: p.address,
-    serviceType: p.serviceType,
-    meals: p.meals,
-    createdAt: p.createdAt.toISOString(),
-    ratings: (ratingsByPlace.get(p.id) ?? []).sort((a, b) =>
-      a.userName.localeCompare(b.userName, "es"),
-    ),
-    photos: photosByPlace.get(p.id) ?? [],
-  }));
+  });
 }
 
 export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRatings | null> {
   const [found] = await db.select().from(place).where(eq(place.id, placeId)).limit(1);
   if (!found) return null;
 
-  const [ratingRows, photoRows] = await Promise.all([
+  const [visitRows, legacyRatingRows, photoRows] = await Promise.all([
+    db
+      .select()
+      .from(placeVisit)
+      .where(eq(placeVisit.placeId, placeId))
+      .orderBy(desc(placeVisit.visitedAt), desc(placeVisit.createdAt)),
     db
       .select({
         id: rating.id,
@@ -149,6 +255,7 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
     db
       .select({
         id: placePhoto.id,
+        visitId: placePhoto.visitId,
         caption: placePhoto.caption,
         createdAt: placePhoto.createdAt,
         userName: user.name,
@@ -159,6 +266,87 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
       .orderBy(asc(placePhoto.createdAt)),
   ]);
 
+  const visitIds = visitRows.map((v) => v.id);
+  const entryRows =
+    visitIds.length > 0
+      ? await db
+          .select({
+            id: visitEntry.id,
+            visitId: visitEntry.visitId,
+            userId: visitEntry.userId,
+            dish: visitEntry.dish,
+            score: visitEntry.score,
+            note: visitEntry.note,
+            updatedAt: visitEntry.updatedAt,
+            userName: user.name,
+            userAccent: user.accentColor,
+          })
+          .from(visitEntry)
+          .innerJoin(user, eq(visitEntry.userId, user.id))
+          .where(inArray(visitEntry.visitId, visitIds))
+      : [];
+
+  const entriesByVisit = new Map<string, VisitEntryItem[]>();
+  for (const row of entryRows) {
+    const item: VisitEntryItem = {
+      id: row.id,
+      userId: row.userId,
+      userName: row.userName,
+      userAccent: row.userAccent,
+      dish: row.dish,
+      score: row.score,
+      note: row.note,
+      updatedAt: row.updatedAt.toISOString(),
+    };
+    const bucket = entriesByVisit.get(row.visitId);
+    if (bucket) bucket.push(item);
+    else entriesByVisit.set(row.visitId, [item]);
+  }
+
+  const photos: PlacePhotoEntry[] = photoRows.map((ph) => ({
+    id: ph.id,
+    visitId: ph.visitId ?? null,
+    url: `/api/photos/${ph.id}`,
+    caption: ph.caption,
+    uploadedBy: ph.userName ?? null,
+    createdAt: ph.createdAt.toISOString(),
+  }));
+
+  const photosByVisit = new Map<string, PlacePhotoEntry[]>();
+  for (const ph of photos) {
+    if (!ph.visitId) continue;
+    const bucket = photosByVisit.get(ph.visitId);
+    if (bucket) bucket.push(ph);
+    else photosByVisit.set(ph.visitId, [ph]);
+  }
+
+  const visits: PlaceVisit[] = visitRows
+    .map((v) => ({
+      id: v.id,
+      visitedAt: v.visitedAt,
+      createdAt: v.createdAt.toISOString(),
+      entries: (entriesByVisit.get(v.id) ?? []).sort((a, b) =>
+        a.userName.localeCompare(b.userName, "es"),
+      ),
+      photos: photosByVisit.get(v.id) ?? [],
+    }))
+    .sort(sortVisitsNewestFirst);
+
+  const ratings =
+    visits.length > 0
+      ? deriveRatingsFromVisits(visits)
+      : legacyRatingRows
+          .map((r) => ({
+            id: r.id,
+            userId: r.userId,
+            userName: r.userName,
+            userAccent: r.userAccent,
+            score: r.score,
+            note: r.note,
+            updatedAt: r.updatedAt.toISOString(),
+          }))
+          .sort((a, b) => a.userName.localeCompare(b.userName, "es"));
+
   return {
     id: found.id,
     groupId: found.groupId,
@@ -167,24 +355,9 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
     serviceType: found.serviceType,
     meals: found.meals,
     createdAt: found.createdAt.toISOString(),
-    ratings: ratingRows
-      .map((r) => ({
-        id: r.id,
-        userId: r.userId,
-        userName: r.userName,
-        userAccent: r.userAccent,
-        score: r.score,
-        note: r.note,
-        updatedAt: r.updatedAt.toISOString(),
-      }))
-      .sort((a, b) => a.userName.localeCompare(b.userName, "es")),
-    photos: photoRows.map((ph) => ({
-      id: ph.id,
-      url: `/api/photos/${ph.id}`,
-      caption: ph.caption,
-      uploadedBy: ph.userName ?? null,
-      createdAt: ph.createdAt.toISOString(),
-    })),
+    ratings,
+    visits,
+    photos,
   };
 }
 
@@ -198,29 +371,42 @@ export async function createPlaceRecord(
   const now = new Date();
   const id = crypto.randomUUID();
 
-  await db.insert(place).values({
-    id,
-    groupId: input.groupId,
-    name: input.name,
-    address: input.address,
-    serviceType: input.serviceType,
-    meals: input.meals,
-    createdBy: userId,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  if (input.initialRating) {
-    await db.insert(rating).values({
-      id: crypto.randomUUID(),
-      placeId: id,
-      userId,
-      score: input.initialRating.score,
-      note: input.initialRating.note,
+  await db.transaction(async (tx) => {
+    await tx.insert(place).values({
+      id,
+      groupId: input.groupId,
+      name: input.name,
+      address: input.address,
+      serviceType: input.serviceType,
+      meals: input.meals,
+      createdBy: userId,
       createdAt: now,
       updatedAt: now,
     });
-  }
+
+    if (input.initialRating) {
+      const visitId = crypto.randomUUID();
+      await tx.insert(placeVisit).values({
+        id: visitId,
+        placeId: id,
+        visitedAt: input.initialRating.visitedAt ?? getTodayIsoDate(),
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(visitEntry).values({
+        id: crypto.randomUUID(),
+        visitId,
+        userId,
+        dish: input.initialRating.dish,
+        score: input.initialRating.score,
+        note: input.initialRating.note,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  });
 
   const created = await getPlaceWithRatings(id);
   if (!created) {
@@ -286,6 +472,217 @@ export async function deletePlaceRecord(
   return "ok";
 }
 
+/**
+ * Creates a new shared visit for a place along with the caller's dish, score, and note.
+ */
+export async function createPlaceVisit(
+  placeId: string,
+  userId: string,
+  input: CreateVisitInput,
+): Promise<
+  | { status: "ok"; place: PlaceWithRatings; visitId: string }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+> {
+  const [existingPlace] = await db
+    .select({ id: place.id, groupId: place.groupId })
+    .from(place)
+    .where(eq(place.id, placeId))
+    .limit(1);
+
+  if (!existingPlace) return { status: "not_found" };
+
+  const allowed = await isUserInGroup(userId, existingPlace.groupId);
+  if (!allowed) return { status: "forbidden" };
+
+  const now = new Date();
+  const visitId = crypto.randomUUID();
+
+  await db.transaction(async (tx) => {
+    await tx.insert(placeVisit).values({
+      id: visitId,
+      placeId,
+      visitedAt: input.visitedAt,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await tx.insert(visitEntry).values({
+      id: crypto.randomUUID(),
+      visitId,
+      userId,
+      dish: input.dish,
+      score: input.score,
+      note: input.note,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  const updated = await getPlaceWithRatings(placeId);
+  return updated ? { status: "ok", place: updated, visitId } : { status: "not_found" };
+}
+
+/**
+ * Updates metadata (date) of an existing visit after verifying group membership.
+ */
+export async function updatePlaceVisit(
+  placeId: string,
+  visitId: string,
+  userId: string,
+  input: UpdateVisitInput,
+): Promise<
+  { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
+> {
+  const [row] = await db
+    .select({ id: placeVisit.id, groupId: place.groupId })
+    .from(placeVisit)
+    .innerJoin(place, eq(placeVisit.placeId, place.id))
+    .where(and(eq(placeVisit.id, visitId), eq(placeVisit.placeId, placeId)))
+    .limit(1);
+
+  if (!row) return { status: "not_found" };
+
+  const allowed = await isUserInGroup(userId, row.groupId);
+  if (!allowed) return { status: "forbidden" };
+
+  await db
+    .update(placeVisit)
+    .set({ visitedAt: input.visitedAt, updatedAt: new Date() })
+    .where(eq(placeVisit.id, visitId));
+
+  const updated = await getPlaceWithRatings(placeId);
+  return updated ? { status: "ok", place: updated } : { status: "not_found" };
+}
+
+/**
+ * Deletes a visit (cascading its entries; any linked photos remain on the place with visitId = null).
+ */
+export async function deletePlaceVisit(
+  placeId: string,
+  visitId: string,
+  userId: string,
+): Promise<
+  { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
+> {
+  const [row] = await db
+    .select({ id: placeVisit.id, groupId: place.groupId })
+    .from(placeVisit)
+    .innerJoin(place, eq(placeVisit.placeId, place.id))
+    .where(and(eq(placeVisit.id, visitId), eq(placeVisit.placeId, placeId)))
+    .limit(1);
+
+  if (!row) return { status: "not_found" };
+
+  const allowed = await isUserInGroup(userId, row.groupId);
+  if (!allowed) return { status: "forbidden" };
+
+  await db.delete(placeVisit).where(eq(placeVisit.id, visitId));
+
+  const updated = await getPlaceWithRatings(placeId);
+  return updated ? { status: "ok", place: updated } : { status: "not_found" };
+}
+
+/**
+ * Saves or updates the caller's own dish, score, and note inside a shared visit.
+ */
+export async function upsertVisitEntry(
+  placeId: string,
+  visitId: string,
+  userId: string,
+  input: UpsertVisitEntryInput,
+): Promise<
+  { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
+> {
+  const [row] = await db
+    .select({ id: placeVisit.id, groupId: place.groupId })
+    .from(placeVisit)
+    .innerJoin(place, eq(placeVisit.placeId, place.id))
+    .where(and(eq(placeVisit.id, visitId), eq(placeVisit.placeId, placeId)))
+    .limit(1);
+
+  if (!row) return { status: "not_found" };
+
+  const allowed = await isUserInGroup(userId, row.groupId);
+  if (!allowed) return { status: "forbidden" };
+
+  const now = new Date();
+  const [existing] = await db
+    .select({ id: visitEntry.id })
+    .from(visitEntry)
+    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, userId)))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(visitEntry)
+      .set({
+        dish: input.dish,
+        score: input.score,
+        note: input.note,
+        updatedAt: now,
+      })
+      .where(eq(visitEntry.id, existing.id));
+  } else {
+    await db.insert(visitEntry).values({
+      id: crypto.randomUUID(),
+      visitId,
+      userId,
+      dish: input.dish,
+      score: input.score,
+      note: input.note,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const updated = await getPlaceWithRatings(placeId);
+  return updated ? { status: "ok", place: updated } : { status: "not_found" };
+}
+
+/**
+ * Removes the caller's entry from a visit, cleaning up the visit only if no entries or photos remain.
+ */
+export async function deleteVisitEntry(
+  placeId: string,
+  visitId: string,
+  userId: string,
+): Promise<
+  { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
+> {
+  const [row] = await db
+    .select({ id: placeVisit.id, groupId: place.groupId })
+    .from(placeVisit)
+    .innerJoin(place, eq(placeVisit.placeId, place.id))
+    .where(and(eq(placeVisit.id, visitId), eq(placeVisit.placeId, placeId)))
+    .limit(1);
+
+  if (!row) return { status: "not_found" };
+
+  const allowed = await isUserInGroup(userId, row.groupId);
+  if (!allowed) return { status: "forbidden" };
+
+  await db
+    .delete(visitEntry)
+    .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, userId)));
+
+  const [remainingEntry, remainingPhoto] = await Promise.all([
+    db.select({ id: visitEntry.id }).from(visitEntry).where(eq(visitEntry.visitId, visitId)).limit(1),
+    db.select({ id: placePhoto.id }).from(placePhoto).where(eq(placePhoto.visitId, visitId)).limit(1),
+  ]);
+
+  if (remainingEntry.length === 0 && remainingPhoto.length === 0) {
+    await db.delete(placeVisit).where(eq(placeVisit.id, visitId));
+  }
+
+  const updated = await getPlaceWithRatings(placeId);
+  return updated ? { status: "ok", place: updated } : { status: "not_found" };
+}
+
+/**
+ * Backwards-compatible rating upsert: updates the caller's entry on the latest visit or creates Visit #1.
+ */
 export async function upsertUserRating(
   placeId: string,
   userId: string,
@@ -304,36 +701,28 @@ export async function upsertUserRating(
   const allowed = await isUserInGroup(userId, existingPlace.groupId);
   if (!allowed) return { status: "forbidden" };
 
-  const now = new Date();
-  const [existingRating] = await db
-    .select({ id: rating.id })
-    .from(rating)
-    .where(and(eq(rating.placeId, placeId), eq(rating.userId, userId)))
+  const [latestVisit] = await db
+    .select({ id: placeVisit.id })
+    .from(placeVisit)
+    .where(eq(placeVisit.placeId, placeId))
+    .orderBy(desc(placeVisit.visitedAt), desc(placeVisit.createdAt))
     .limit(1);
 
-  if (existingRating) {
-    await db
-      .update(rating)
-      .set({
-        score: input.score,
-        note: input.note,
-        updatedAt: now,
-      })
-      .where(eq(rating.id, existingRating.id));
-  } else {
-    await db.insert(rating).values({
-      id: crypto.randomUUID(),
-      placeId,
-      userId,
+  if (latestVisit) {
+    return upsertVisitEntry(placeId, latestVisit.id, userId, {
+      dish: "",
       score: input.score,
       note: input.note,
-      createdAt: now,
-      updatedAt: now,
     });
   }
 
-  const updated = await getPlaceWithRatings(placeId);
-  return updated ? { status: "ok", place: updated } : { status: "not_found" };
+  const created = await createPlaceVisit(placeId, userId, {
+    visitedAt: getTodayIsoDate(),
+    dish: "",
+    score: input.score,
+    note: input.note,
+  });
+  return created.status === "ok" ? { status: "ok", place: created.place } : created;
 }
 
 export async function deleteUserRating(
@@ -353,6 +742,18 @@ export async function deleteUserRating(
   const allowed = await isUserInGroup(userId, existingPlace.groupId);
   if (!allowed) return { status: "forbidden" };
 
+  const visits = await db
+    .select({ id: placeVisit.id })
+    .from(placeVisit)
+    .where(eq(placeVisit.placeId, placeId));
+
+  const visitIds = visits.map((v) => v.id);
+  if (visitIds.length > 0) {
+    await db
+      .delete(visitEntry)
+      .where(and(inArray(visitEntry.visitId, visitIds), eq(visitEntry.userId, userId)));
+  }
+
   await db
     .delete(rating)
     .where(and(eq(rating.placeId, placeId), eq(rating.userId, userId)));
@@ -363,6 +764,7 @@ export async function deleteUserRating(
 
 export async function addPlacePhotoRecord(params: {
   placeId: string;
+  visitId?: string | null;
   userId: string;
   filename: string;
   mimeType: string;
@@ -381,9 +783,21 @@ export async function addPlacePhotoRecord(params: {
   const allowed = await isUserInGroup(params.userId, existingPlace.groupId);
   if (!allowed) return { status: "forbidden" };
 
+  let verifiedVisitId: string | null = null;
+  if (params.visitId) {
+    const [validVisit] = await db
+      .select({ id: placeVisit.id })
+      .from(placeVisit)
+      .where(and(eq(placeVisit.id, params.visitId), eq(placeVisit.placeId, params.placeId)))
+      .limit(1);
+    if (!validVisit) return { status: "not_found" };
+    verifiedVisitId = validVisit.id;
+  }
+
   await db.insert(placePhoto).values({
     id: crypto.randomUUID(),
     placeId: params.placeId,
+    visitId: verifiedVisitId,
     userId: params.userId,
     filename: params.filename,
     mimeType: params.mimeType,

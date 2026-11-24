@@ -46,6 +46,8 @@ export async function POST(request: Request, context: RouteContext) {
 
   const file = formData.get("file");
   const caption = String(formData.get("caption") ?? "").trim();
+  const rawVisitId = formData.get("visitId");
+  const visitId = typeof rawVisitId === "string" && rawVisitId.trim() ? rawVisitId.trim() : null;
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Seleccioná una imagen" }, { status: 400 });
@@ -70,6 +72,7 @@ export async function POST(request: Request, context: RouteContext) {
   const filename = await savePhotoBuffer(buf, detected.ext);
   const result = await addPlacePhotoRecord({
     placeId,
+    visitId,
     userId: session.user.id,
     filename,
     mimeType: detected.mimeType,

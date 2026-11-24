@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 export type MealType = "desayuno" | "almuerzo" | "merienda" | "cena";
-export type ServiceType = "dine_in" | "delivery";
+export type ServiceType = "dine_in" | "delivery" | "ice_cream";
 export type AccentColor = "teal" | "orange" | "cobalt" | "berry";
 export type FriendshipStatus = "pending" | "accepted";
 export type GroupRole = "owner" | "member";
@@ -152,11 +152,45 @@ export const rating = sqliteTable(
   ],
 );
 
+export const placeVisit = sqliteTable("place_visit", {
+  id: text("id").primaryKey(),
+  placeId: text("place_id")
+    .notNull()
+    .references(() => place.id, { onDelete: "cascade" }),
+  visitedAt: text("visited_at").notNull().default(""),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const visitEntry = sqliteTable(
+  "visit_entry",
+  {
+    id: text("id").primaryKey(),
+    visitId: text("visit_id")
+      .notNull()
+      .references(() => placeVisit.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    dish: text("dish").notNull().default(""),
+    score: real("score").notNull(),
+    note: text("note").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("visit_entry_visit_user_unique").on(table.visitId, table.userId),
+    check("visit_entry_score_range", sql`${table.score} >= 1 AND ${table.score} <= 10`),
+  ],
+);
+
 export const placePhoto = sqliteTable("place_photo", {
   id: text("id").primaryKey(),
   placeId: text("place_id")
     .notNull()
     .references(() => place.id, { onDelete: "cascade" }),
+  visitId: text("visit_id").references(() => placeVisit.id, { onDelete: "set null" }),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),
@@ -174,5 +208,7 @@ export const schema = {
   groupMember,
   place,
   rating,
+  placeVisit,
+  visitEntry,
   placePhoto,
 };

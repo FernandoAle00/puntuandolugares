@@ -2,6 +2,7 @@
 
 import {
   Dices,
+  IceCreamCone,
   LogOut,
   MapPin,
   Plus,
@@ -93,11 +94,17 @@ export function PocketGuide({
     [places, activeGroupId],
   );
 
-  const dineInCount = useMemo(
-    () => groupPlaces.filter((p) => p.serviceType === "dine_in").length,
-    [groupPlaces],
-  );
-  const deliveryCount = groupPlaces.length - dineInCount;
+  const serviceCounts = useMemo(() => {
+    const counts: Record<ServiceType, number> = {
+      dine_in: 0,
+      delivery: 0,
+      ice_cream: 0,
+    };
+    for (const p of groupPlaces) {
+      counts[p.serviceType] = (counts[p.serviceType] ?? 0) + 1;
+    }
+    return counts;
+  }, [groupPlaces]);
 
   const servicePlaces = useMemo(
     () => groupPlaces.filter((p) => p.serviceType === serviceType),
@@ -391,7 +398,7 @@ export function PocketGuide({
 
           {/* Service Type Switcher */}
           <div
-            className="mb-3.5 grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-1 rounded-2xl border-2 p-1 sm:grid-cols-2"
+            className="mb-3.5 grid grid-cols-3 gap-1 rounded-2xl border-2 p-1"
             style={{
               borderColor: "var(--border)",
               backgroundColor: "var(--surface)",
@@ -401,8 +408,13 @@ export function PocketGuide({
           >
             {SERVICE_TYPES.map((type) => {
               const active = serviceType === type;
-              const count = type === "dine_in" ? dineInCount : deliveryCount;
-              const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+              const count = serviceCounts[type];
+              const Icon =
+                type === "dine_in"
+                  ? Utensils
+                  : type === "delivery"
+                    ? ShoppingBag
+                    : IceCreamCone;
               return (
                 <button
                   key={type}
@@ -410,7 +422,7 @@ export function PocketGuide({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setServiceType(type)}
-                  className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[12px] leading-none font-bold whitespace-nowrap sm:text-[13px]"
+                  className="pressable inline-flex items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[11.5px] leading-none font-bold whitespace-nowrap sm:gap-1.5 sm:px-2 sm:text-[13px]"
                   style={{
                     backgroundColor: active ? "var(--badge-bg)" : "transparent",
                     color: active ? "var(--badge-fg)" : "var(--fg-muted)",
@@ -436,7 +448,13 @@ export function PocketGuide({
             >
               <div className="font-display text-[17px] leading-snug font-bold">
                 {pickedPlace
-                  ? `${serviceType === "delivery" ? "Próximo pedido" : "Próxima salida"}: ${pickedPlace.name}`
+                  ? `${
+                      serviceType === "delivery"
+                        ? "Próximo pedido"
+                        : serviceType === "ice_cream"
+                          ? "Próxima heladería"
+                          : "Próxima salida"
+                    }: ${pickedPlace.name}`
                   : "No quedan pendientes"}
               </div>
               <div className="mt-0.5 text-[13px]" style={{ color: "var(--highlight-muted)" }}>
@@ -444,7 +462,9 @@ export function PocketGuide({
                   ? pickedPlace.meals.map((m) => MEAL_LABELS[m]).join(" o ")
                   : serviceType === "delivery"
                     ? "Sumá un lugar nuevo para pedir"
-                    : "Sumá un lugar nuevo para probar"}
+                    : serviceType === "ice_cream"
+                      ? "Sumá una heladería nueva para probar"
+                      : "Sumá un lugar nuevo para probar"}
               </div>
             </button>
 
@@ -570,11 +590,26 @@ export function PocketGuide({
                       <div className="font-display text-[18px] leading-snug font-bold">
                         {place.name}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]" style={{ color: "var(--fg-muted)" }}>
+                      <div
+                        className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]"
+                        style={{ color: "var(--fg-muted)" }}
+                      >
                         <span>
                           {place.meals.map((m) => MEAL_LABELS[m]).join(" / ")}
                           {place.address ? ` en ${place.address}` : ""}
                         </span>
+                        {place.visits.length > 0 && (
+                          <span className="tabular font-semibold" style={{ color: "var(--fg)" }}>
+                            {place.visits.length}{" "}
+                            {place.serviceType === "delivery"
+                              ? place.visits.length === 1
+                                ? "pedido"
+                                : "pedidos"
+                              : place.visits.length === 1
+                                ? "visita"
+                                : "visitas"}
+                          </span>
+                        )}
                         <a
                           href={buildGoogleMapsUrl(place)}
                           target="_blank"

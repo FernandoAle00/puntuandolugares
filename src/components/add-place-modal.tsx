@@ -1,9 +1,10 @@
 "use client";
 
-import { Minus, Plus, ShoppingBag, Utensils, X } from "lucide-react";
+import { IceCreamCone, Minus, Plus, ShoppingBag, Utensils, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { MealType, ServiceType } from "@/db/schema";
 import {
+  getTodayIsoDate,
   MEAL_LABELS,
   MEALS,
   SERVICE_LABELS,
@@ -33,6 +34,8 @@ export function AddPlaceModal({
   const [serviceType, setServiceType] = useState<ServiceType>(defaultServiceType);
   const [meals, setMeals] = useState<MealType[]>(["cena"]);
   const [rateNow, setRateNow] = useState(false);
+  const [dish, setDish] = useState("");
+  const [visitedAt, setVisitedAt] = useState(() => getTodayIsoDate());
   const [score, setScore] = useState(8);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +44,8 @@ export function AddPlaceModal({
   useEffect(() => {
     if (open) {
       setServiceType(defaultServiceType);
+      setMeals(defaultServiceType === "ice_cream" ? ["merienda", "cena"] : ["cena"]);
+      setVisitedAt(getTodayIsoDate());
     }
   }, [open, defaultServiceType]);
 
@@ -54,6 +59,13 @@ export function AddPlaceModal({
   }, [open, onClose]);
 
   if (!open || !groupId) return null;
+
+  function handleServiceTypeChange(next: ServiceType) {
+    setServiceType(next);
+    if (next === "ice_cream" && meals.length === 1 && meals[0] === "cena") {
+      setMeals(["merienda", "cena"]);
+    }
+  }
 
   function toggleMeal(m: MealType) {
     setMeals((prev) => {
@@ -91,7 +103,7 @@ export function AddPlaceModal({
           address,
           serviceType,
           meals,
-          ...(rateNow ? { initialRating: { score, note } } : {}),
+          ...(rateNow ? { initialRating: { dish, score, note, visitedAt } } : {}),
         }),
       });
 
@@ -110,8 +122,10 @@ export function AddPlaceModal({
       setName("");
       setAddress("");
       setServiceType(defaultServiceType);
-      setMeals(["cena"]);
+      setMeals(defaultServiceType === "ice_cream" ? ["merienda", "cena"] : ["cena"]);
       setRateNow(false);
+      setDish("");
+      setVisitedAt(getTodayIsoDate());
       setScore(8);
       setNote("");
       setSaving(false);
@@ -122,10 +136,26 @@ export function AddPlaceModal({
     }
   }
 
+  const namePlaceholder =
+    serviceType === "ice_cream"
+      ? "Ej. Heladería Italia, Rapanui..."
+      : serviceType === "delivery"
+        ? "Ej. Kuro Sushi, Empanadas del Sur..."
+        : "Ej. Troppo Napoletano";
+
+  const dishPlaceholder =
+    serviceType === "ice_cream"
+      ? "Ej. Dulce de leche granizado, pistacho..."
+      : "Ej. Milanesa napolitana, tabla 1...";
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
-      style={{ backgroundColor: "var(--backdrop)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--backdrop)",
+        paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -135,16 +165,8 @@ export function AddPlaceModal({
         role="dialog"
         aria-modal="true"
         aria-label="Sumar un lugar"
-        className="zine-sheet max-h-[90dvh] w-full max-w-[480px] overflow-y-auto px-5 pt-3 pb-6"
-        style={{
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
-        }}
+        className="zine-sheet max-h-[85dvh] w-full max-w-[480px] overflow-y-auto px-5 py-5"
       >
-        <div
-          className="mx-auto mb-3 h-1.5 w-10 rounded-full sm:hidden"
-          style={{ backgroundColor: "var(--border-soft)" }}
-        />
-
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="font-display m-0 text-[22px] font-bold">Sumar lugar</h2>
@@ -168,21 +190,22 @@ export function AddPlaceModal({
             <span className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
               Apartado
             </span>
-            <div
-              className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-2 sm:grid-cols-2"
-              role="group"
-              aria-label="Tipo de lugar"
-            >
+            <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Tipo de lugar">
               {SERVICE_TYPES.map((type) => {
                 const active = serviceType === type;
-                const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+                const Icon =
+                  type === "dine_in"
+                    ? Utensils
+                    : type === "delivery"
+                      ? ShoppingBag
+                      : IceCreamCone;
                 return (
                   <button
                     key={type}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setServiceType(type)}
-                    className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl border-2 px-2.5 py-2 text-[12px] font-bold whitespace-nowrap sm:text-[13px]"
+                    onClick={() => handleServiceTypeChange(type)}
+                    className="pressable inline-flex items-center justify-center gap-1 rounded-xl border-2 px-2 py-2 text-[12px] font-bold whitespace-nowrap"
                     style={{
                       borderColor: active ? "var(--border)" : "var(--border-soft)",
                       backgroundColor: active ? "var(--highlight-bg)" : "var(--surface)",
@@ -198,7 +221,11 @@ export function AddPlaceModal({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="new-place-name" className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+            <label
+              htmlFor="new-place-name"
+              className="text-[12px] font-semibold"
+              style={{ color: "var(--fg-muted)" }}
+            >
               Nombre
             </label>
             <input
@@ -206,7 +233,7 @@ export function AddPlaceModal({
               type="text"
               required
               autoFocus
-              placeholder="Ej. Troppo Napoletano"
+              placeholder={namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="zine-input"
@@ -214,7 +241,11 @@ export function AddPlaceModal({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="new-place-address" className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+            <label
+              htmlFor="new-place-address"
+              className="text-[12px] font-semibold"
+              style={{ color: "var(--fg-muted)" }}
+            >
               Dirección (opcional)
             </label>
             <input
@@ -270,8 +301,8 @@ export function AddPlaceModal({
           >
             <span>
               {serviceType === "delivery"
-                ? "Ya pedimos, cargar mi puntaje ahora"
-                : "Ya fuimos, cargar mi puntaje ahora"}
+                ? "Ya pedimos, cargar primera vez ahora"
+                : "Ya fuimos, cargar primera visita ahora"}
             </span>
             <span
               className="rounded-full px-2.5 py-0.5 text-[11px]"
@@ -289,6 +320,41 @@ export function AddPlaceModal({
               className="flex flex-col gap-3 rounded-2xl border-2 p-3.5"
               style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--bg)" }}
             >
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="new-place-dish"
+                  className="text-[12px] font-semibold"
+                  style={{ color: "var(--fg-muted)" }}
+                >
+                  Qué comiste
+                </label>
+                <input
+                  id="new-place-dish"
+                  type="text"
+                  placeholder={dishPlaceholder}
+                  value={dish}
+                  onChange={(e) => setDish(e.target.value)}
+                  className="zine-input"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="new-place-date"
+                  className="text-[12px] font-semibold"
+                  style={{ color: "var(--fg-muted)" }}
+                >
+                  Fecha (opcional)
+                </label>
+                <input
+                  id="new-place-date"
+                  type="date"
+                  value={visitedAt}
+                  onChange={(e) => setVisitedAt(e.target.value)}
+                  className="zine-input"
+                />
+              </div>
+
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] font-bold">Tu puntaje (1 a 10)</span>
                 <div className="flex items-center gap-1.5">

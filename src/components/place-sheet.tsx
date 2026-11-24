@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Calendar,
   Camera,
+  IceCreamCone,
   MapPin,
   Minus,
   Pencil,
@@ -17,11 +19,15 @@ import {
   buildGoogleMapsUrl,
   computeAverage,
   formatScore,
+  formatVisitDate,
+  getTodayIsoDate,
   MEAL_LABELS,
   MEALS,
+  SERVICE_FULL_LABELS,
   SERVICE_LABELS,
   SERVICE_TYPES,
   type PlacePhotoEntry,
+  type PlaceVisit,
   type PlaceWithRatings,
 } from "@/lib/domain";
 
@@ -38,6 +44,105 @@ export function accentCssVar(accent: AccentColor): string {
     default:
       return "var(--accent-teal)";
   }
+}
+
+interface ScorePickerProps {
+  score: number;
+  color: string;
+  onChange: (next: number) => void;
+}
+
+function ScorePicker({ score, color, onChange }: ScorePickerProps) {
+  function stepScore(delta: number) {
+    onChange(Math.min(10, Math.max(1, Math.round((score + delta) * 10) / 10)));
+  }
+
+  function handleInput(raw: string) {
+    const parsed = parseFloat(raw.replace(",", "."));
+    if (!Number.isNaN(parsed)) {
+      onChange(Math.min(10, Math.max(1, Math.round(parsed * 10) / 10)));
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] font-bold" style={{ color }}>
+          Puntaje (1 a 10)
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => stepScore(-0.1)}
+            aria-label="Restar 0,1"
+            className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
+            style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            step={0.1}
+            inputMode="decimal"
+            aria-label="Puntaje numérico"
+            value={score}
+            onChange={(e) => handleInput(e.target.value)}
+            className="font-display tabular w-16 rounded-lg border-2 py-1 text-center text-[18px] font-bold"
+            style={{
+              borderColor: color,
+              backgroundColor: "var(--surface)",
+              color,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => stepScore(0.1)}
+            aria-label="Sumar 0,1"
+            className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
+            style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <input
+        type="range"
+        min={1}
+        max={10}
+        step={0.1}
+        value={score}
+        onChange={(e) => handleInput(e.target.value)}
+        aria-label="Selector deslizante de puntaje"
+        className="w-full cursor-pointer"
+        style={{ accentColor: color }}
+      />
+
+      <div className="tabular grid grid-cols-5 gap-1.5">
+        {QUICK_SCORES.map((val) => {
+          const selected = score === val;
+          return (
+            <button
+              key={val}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(val)}
+              className="pressable rounded-xl border-2 py-1.5 text-[12px] font-bold"
+              style={{
+                borderColor: selected ? color : "var(--border-soft)",
+                backgroundColor: selected ? color : "var(--surface)",
+                color: selected ? "var(--accent-on-solid)" : "var(--fg)",
+              }}
+            >
+              {formatScore(val)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface PlaceSheetProps {
@@ -59,39 +164,60 @@ export function PlaceSheet({
   onUpdated,
   onDeleted,
 }: PlaceSheetProps) {
-  const myExisting = place?.ratings.find((r) => r.userId === currentUserId);
-  const otherRatings = place?.ratings.filter((r) => r.userId !== currentUserId) ?? [];
-
-  const [score, setScore] = useState<number>(myExisting?.score ?? 8);
-  const [note, setNote] = useState<string>(myExisting?.note ?? "");
   const [editingMeta, setEditingMeta] = useState(false);
   const [name, setName] = useState(place?.name ?? "");
   const [address, setAddress] = useState(place?.address ?? "");
   const [serviceType, setServiceType] = useState<ServiceType>(place?.serviceType ?? "dine_in");
   const [meals, setMeals] = useState<MealType[]>(place?.meals ?? ["cena"]);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [photoCaption, setPhotoCaption] = useState("");
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // New visit composer state
+  const [newVisitOpen, setNewVisitOpen] = useState(false);
+  const [newVisitDate, setNewVisitDate] = useState(() => getTodayIsoDate());
+  const [newVisitDish, setNewVisitDish] = useState("");
+  const [newVisitScore, setNewVisitScore] = useState(8);
+  const [newVisitNote, setNewVisitNote] = useState("");
+
+  // Per-visit entry editor state
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [entryDish, setEntryDish] = useState("");
+  const [entryScore, setEntryScore] = useState(8);
+  const [entryNote, setEntryNote] = useState("");
+
+  // Per-visit date editor & delete confirmation
+  const [editingDateVisitId, setEditingDateVisitId] = useState<string | null>(null);
+  const [editDateValue, setEditDateValue] = useState("");
+  const [confirmDeleteVisitId, setConfirmDeleteVisitId] = useState<string | null>(null);
+
+  // Photo upload per visit
+  const [photoCaptions, setPhotoCaptions] = useState<Record<string, string>>({});
+  const [uploadingVisitId, setUploadingVisitId] = useState<string | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<PlacePhotoEntry | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     if (!place) return;
-    const mine = place.ratings.find((r) => r.userId === currentUserId);
-    setScore(mine?.score ?? 8);
-    setNote(mine?.note ?? "");
     setName(place.name);
     setAddress(place.address);
     setServiceType(place.serviceType);
     setMeals(place.meals);
     setEditingMeta(false);
     setConfirmDelete(false);
-    setPhotoCaption("");
+    setNewVisitOpen(place.visits.length === 0);
+    setNewVisitDate(getTodayIsoDate());
+    setNewVisitDish("");
+    setNewVisitScore(8);
+    setNewVisitNote("");
+    setEditingVisitId(null);
+    setEditingDateVisitId(null);
+    setConfirmDeleteVisitId(null);
+    setPhotoCaptions({});
     setLightboxPhoto(null);
     setError(null);
-  }, [place, currentUserId]);
+  }, [place?.id]);
 
   useEffect(() => {
     if (!place) return;
@@ -109,17 +235,15 @@ export function PlaceSheet({
 
   const avg = computeAverage(place.ratings);
   const myColor = accentCssVar(currentUserAccent);
-
-  function stepScore(delta: number) {
-    setScore((prev) => Math.min(10, Math.max(1, Math.round((prev + delta) * 10) / 10)));
-  }
-
-  function handleScoreChange(raw: string) {
-    const parsed = parseFloat(raw.replace(",", "."));
-    if (!Number.isNaN(parsed)) {
-      setScore(Math.min(10, Math.max(1, Math.round(parsed * 10) / 10)));
-    }
-  }
+  const isDelivery = place.serviceType === "delivery";
+  const visitNoun = isDelivery ? "pedido" : "visita";
+  const visitNounPlural = isDelivery ? "pedidos" : "visitas";
+  const visitLabelCap = isDelivery ? "Pedido" : "Visita";
+  const dishPlaceholder =
+    place.serviceType === "ice_cream"
+      ? "Ej. Dulce de leche granizado, pistacho..."
+      : "Ej. Milanesa napolitana, tabla 1...";
+  const unlinkedPhotos = place.photos.filter((p) => !p.visitId);
 
   function toggleMeal(m: MealType) {
     setMeals((prev) => {
@@ -130,15 +254,29 @@ export function PlaceSheet({
     });
   }
 
-  async function saveMyRating() {
+  function startEditingEntry(visit: PlaceVisit) {
+    const mine = visit.entries.find((e) => e.userId === currentUserId);
+    setEditingVisitId(visit.id);
+    setEntryDish(mine?.dish ?? "");
+    setEntryScore(mine?.score ?? 8);
+    setEntryNote(mine?.note ?? "");
+    setError(null);
+  }
+
+  async function handleCreateVisit() {
     if (!place) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/places/${place.id}/rating`, {
-        method: "PUT",
+      const res = await fetch(`/api/places/${place.id}/visits`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ score, note }),
+        body: JSON.stringify({
+          visitedAt: newVisitDate,
+          dish: newVisitDish,
+          score: newVisitScore,
+          note: newVisitNote,
+        }),
       });
       const data = (await res.json().catch(() => null)) as {
         place?: PlaceWithRatings;
@@ -146,25 +284,62 @@ export function PlaceSheet({
       } | null;
 
       if (!res.ok || !data?.place) {
-        setError(data?.error || "No se pudo guardar tu puntaje");
+        setError(data?.error || "No se pudo guardar la visita");
         setBusy(false);
         return;
       }
       onUpdated(data.place);
+      setNewVisitOpen(false);
+      setNewVisitDate(getTodayIsoDate());
+      setNewVisitDish("");
+      setNewVisitScore(8);
+      setNewVisitNote("");
       setBusy(false);
-      onClose();
     } catch {
       setError("Error de conexión");
       setBusy(false);
     }
   }
 
-  async function removeMyRating() {
+  async function handleSaveEntry(visitId: string) {
     if (!place) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/places/${place.id}/rating`, {
+      const res = await fetch(`/api/places/${place.id}/visits/${visitId}/entry`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dish: entryDish,
+          score: entryScore,
+          note: entryNote,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        place?: PlaceWithRatings;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.place) {
+        setError(data?.error || "No se pudo guardar tu comida");
+        setBusy(false);
+        return;
+      }
+      onUpdated(data.place);
+      setEditingVisitId(null);
+      setBusy(false);
+    } catch {
+      setError("Error de conexión");
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteEntry(visitId: string) {
+    if (!place) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/places/${place.id}/visits/${visitId}/entry`, {
         method: "DELETE",
       });
       const data = (await res.json().catch(() => null)) as {
@@ -178,6 +353,68 @@ export function PlaceSheet({
         return;
       }
       onUpdated(data.place);
+      setEditingVisitId(null);
+      setBusy(false);
+    } catch {
+      setError("Error de conexión");
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveVisitDate(visitId: string) {
+    if (!place) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/places/${place.id}/visits/${visitId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitedAt: editDateValue }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        place?: PlaceWithRatings;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.place) {
+        setError(data?.error || "No se pudo actualizar la fecha");
+        setBusy(false);
+        return;
+      }
+      onUpdated(data.place);
+      setEditingDateVisitId(null);
+      setBusy(false);
+    } catch {
+      setError("Error de conexión");
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteVisit(visitId: string) {
+    if (!place) return;
+    if (confirmDeleteVisitId !== visitId) {
+      setConfirmDeleteVisitId(visitId);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/places/${place.id}/visits/${visitId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        place?: PlaceWithRatings;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.place) {
+        setError(data?.error || "No se pudo eliminar la visita");
+        setBusy(false);
+        return;
+      }
+      onUpdated(data.place);
+      setConfirmDeleteVisitId(null);
+      if (editingVisitId === visitId) setEditingVisitId(null);
       setBusy(false);
     } catch {
       setError("Error de conexión");
@@ -214,7 +451,7 @@ export function PlaceSheet({
     }
   }
 
-  async function handleDelete() {
+  async function handleDeletePlace() {
     if (!place) return;
     if (!confirmDelete) {
       setConfirmDelete(true);
@@ -237,17 +474,22 @@ export function PlaceSheet({
     }
   }
 
-  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoSelected(visitId: string | null, e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !place) return;
-    setUploadingPhoto(true);
+    const key = visitId ?? "__general__";
+    setUploadingVisitId(key);
     setError(null);
 
     try {
       const fd = new FormData();
       fd.append("file", file);
-      if (photoCaption.trim()) {
-        fd.append("caption", photoCaption.trim());
+      if (visitId) {
+        fd.append("visitId", visitId);
+      }
+      const caption = (photoCaptions[key] ?? "").trim();
+      if (caption) {
+        fd.append("caption", caption);
       }
 
       const res = await fetch(`/api/places/${place.id}/photos`, {
@@ -262,17 +504,18 @@ export function PlaceSheet({
 
       if (!res.ok || !data?.place) {
         setError(data?.error || "No se pudo subir la foto");
-        setUploadingPhoto(false);
+        setUploadingVisitId(null);
         return;
       }
 
       onUpdated(data.place);
-      setPhotoCaption("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setUploadingPhoto(false);
+      setPhotoCaptions((prev) => ({ ...prev, [key]: "" }));
+      const inputEl = fileInputsRef.current[key];
+      if (inputEl) inputEl.value = "";
+      setUploadingVisitId(null);
     } catch {
       setError("Error al subir la foto");
-      setUploadingPhoto(false);
+      setUploadingVisitId(null);
     }
   }
 
@@ -303,8 +546,12 @@ export function PlaceSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
-      style={{ backgroundColor: "var(--backdrop)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--backdrop)",
+        paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -313,27 +560,19 @@ export function PlaceSheet({
         role="dialog"
         aria-modal="true"
         aria-label={place.name}
-        className="zine-sheet max-h-[90dvh] w-full max-w-[520px] overflow-y-auto px-5 pt-3 pb-6"
-        style={{
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
-        }}
+        className="zine-sheet max-h-[85dvh] w-full max-w-[520px] overflow-y-auto px-5 py-5"
       >
-        <div
-          className="mx-auto mb-3 h-1.5 w-10 rounded-full sm:hidden"
-          style={{ backgroundColor: "var(--border-soft)" }}
-        />
-
         {/* Header */}
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-3.5 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="font-display m-0 text-[23px] leading-tight font-bold">
+            <h2 className="font-display m-0 text-[22px] leading-tight font-bold">
               {place.name}
             </h2>
             <div
               className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]"
               style={{ color: "var(--fg-muted)" }}
             >
-              {place.serviceType === "delivery" && (
+              {place.serviceType !== "dine_in" && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold"
                   style={{
@@ -341,14 +580,24 @@ export function PlaceSheet({
                     color: "var(--pill-fg)",
                   }}
                 >
-                  <ShoppingBag className="h-3 w-3" />
-                  {SERVICE_LABELS.delivery}
+                  {place.serviceType === "delivery" ? (
+                    <ShoppingBag className="h-3 w-3" />
+                  ) : (
+                    <IceCreamCone className="h-3 w-3" />
+                  )}
+                  {SERVICE_FULL_LABELS[place.serviceType]}
                 </span>
               )}
               <span>
                 {place.meals.map((m) => MEAL_LABELS[m]).join(" / ")}
                 {place.address ? ` en ${place.address}` : ""}
               </span>
+              {place.visits.length > 0 && (
+                <span className="tabular font-bold" style={{ color: "var(--fg)" }}>
+                  {place.visits.length}{" "}
+                  {place.visits.length === 1 ? visitNoun : visitNounPlural}
+                </span>
+              )}
             </div>
           </div>
 
@@ -376,7 +625,7 @@ export function PlaceSheet({
           </div>
         </div>
 
-        {/* Quick action bar: Google Maps + Edit place */}
+        {/* Quick action bar */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <a
             href={buildGoogleMapsUrl(place)}
@@ -390,7 +639,7 @@ export function PlaceSheet({
             }}
           >
             <MapPin className="h-3.5 w-3.5" />
-            Abrir en Google Maps
+            Google Maps
           </a>
 
           <button
@@ -403,8 +652,30 @@ export function PlaceSheet({
             }}
           >
             <Pencil className="h-3.5 w-3.5" />
-            {editingMeta ? "Cancelar edición" : "Editar datos"}
+            {editingMeta ? "Cancelar" : "Editar datos"}
           </button>
+
+          {place.visits.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setNewVisitOpen((v) => !v);
+                setError(null);
+              }}
+              className="pressable ml-auto inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] font-bold"
+              style={{
+                backgroundColor: "var(--fg)",
+                color: "var(--bg)",
+              }}
+            >
+              <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+              {newVisitOpen
+                ? "Cerrar"
+                : isDelivery
+                  ? "Nuevo pedido"
+                  : "Nueva visita"}
+            </button>
+          )}
         </div>
 
         {/* Optional place metadata editor */}
@@ -429,21 +700,22 @@ export function PlaceSheet({
               <span className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
                 Apartado
               </span>
-              <div
-                className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] gap-2 sm:grid-cols-2"
-                role="group"
-                aria-label="Tipo de lugar"
-              >
+              <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Tipo de lugar">
                 {SERVICE_TYPES.map((type) => {
                   const active = serviceType === type;
-                  const Icon = type === "dine_in" ? Utensils : ShoppingBag;
+                  const Icon =
+                    type === "dine_in"
+                      ? Utensils
+                      : type === "delivery"
+                        ? ShoppingBag
+                        : IceCreamCone;
                   return (
                     <button
                       key={type}
                       type="button"
                       aria-pressed={active}
                       onClick={() => setServiceType(type)}
-                      className="pressable inline-flex items-center justify-center gap-1.5 rounded-xl border-2 px-2.5 py-2 text-[12px] font-bold whitespace-nowrap"
+                      className="pressable inline-flex items-center justify-center gap-1 rounded-xl border-2 px-2 py-2 text-[12px] font-bold whitespace-nowrap"
                       style={{
                         borderColor: active ? "var(--border)" : "var(--border-soft)",
                         backgroundColor: active ? "var(--highlight-bg)" : "var(--surface)",
@@ -501,7 +773,7 @@ export function PlaceSheet({
               <button
                 type="button"
                 disabled={busy}
-                onClick={handleDelete}
+                onClick={handleDeletePlace}
                 className="pressable inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold"
                 style={{ backgroundColor: "var(--danger-soft)", color: "var(--danger)" }}
               >
@@ -522,24 +794,24 @@ export function PlaceSheet({
           </div>
         )}
 
-        {/* Other people's ratings (read-only) */}
-        {otherRatings.length > 0 && (
+        {/* Overall derived averages per person */}
+        {place.ratings.length > 0 && (
           <div
-            className="mb-4 flex flex-col gap-2.5 rounded-2xl p-3.5"
+            className="mb-4 flex flex-col gap-2 rounded-2xl p-3.5"
             style={{ backgroundColor: "var(--surface-soft)" }}
           >
-            {otherRatings.map((r) => {
+            {place.ratings.map((r) => {
               const color = accentCssVar(r.userAccent);
               return (
-                <div key={r.id} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-[13px] font-bold">
-                    <span style={{ color }}>{r.userName}</span>
-                    <span className="tabular" style={{ color }}>
-                      {formatScore(r.score)} / 10
-                    </span>
-                  </div>
+                <div
+                  key={r.userId}
+                  className="tabular grid grid-cols-[64px_1fr_42px] items-center gap-2 text-[13px] font-bold"
+                >
+                  <span className="truncate" style={{ color }}>
+                    {r.userName}
+                  </span>
                   <div
-                    className="h-2 w-full overflow-hidden rounded-full"
+                    className="h-2 overflow-hidden rounded-full"
                     style={{ backgroundColor: "var(--surface)" }}
                   >
                     <div
@@ -547,158 +819,452 @@ export function PlaceSheet({
                       style={{ width: `${r.score * 10}%`, backgroundColor: color }}
                     />
                   </div>
-                  {r.note && <p className="mt-1 mb-0 text-[13px]">{r.note}</p>}
+                  <span className="text-right" style={{ color }}>
+                    {formatScore(r.score)}
+                  </span>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Current user's own rating editor (0.1 step precision) */}
-        <div
-          className="mb-4 flex flex-col gap-3 rounded-2xl border-2 p-4"
-          style={{ borderColor: myColor, backgroundColor: "var(--bg)" }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[14px] font-bold" style={{ color: myColor }}>
-              Tu puntaje ({currentUserName})
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => stepScore(-0.1)}
-                aria-label="Restar 0,1"
-                className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-                style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={0.1}
-                inputMode="decimal"
-                aria-label="Tu puntaje numérico"
-                value={score}
-                onChange={(e) => handleScoreChange(e.target.value)}
-                className="font-display tabular w-16 rounded-lg border-2 py-1 text-center text-[20px] font-bold"
-                style={{
-                  borderColor: myColor,
-                  backgroundColor: "var(--surface)",
-                  color: myColor,
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => stepScore(0.1)}
-                aria-label="Sumar 0,1"
-                className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-                style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+        {error && (
+          <p
+            role="alert"
+            className="mb-3 rounded-xl px-3 py-2 text-[13px] font-semibold"
+            style={{ backgroundColor: "var(--danger-soft)", color: "var(--danger)" }}
+          >
+            {error}
+          </p>
+        )}
+
+        {/* New Visit Composer */}
+        {newVisitOpen && (
+          <section
+            className="mb-4 flex flex-col gap-3 rounded-2xl border-2 p-4"
+            style={{ borderColor: myColor, backgroundColor: "var(--bg)" }}
+            aria-label={isDelivery ? "Registrar pedido" : "Registrar visita"}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-display text-[16px] font-bold">
+                {place.visits.length === 0
+                  ? isDelivery
+                    ? "Primer pedido"
+                    : "Primera visita"
+                  : isDelivery
+                    ? `Nuevo pedido (#${place.visits.length + 1})`
+                    : `Nueva visita (#${place.visits.length + 1})`}
+              </span>
+              <span className="text-[12px] font-bold" style={{ color: myColor }}>
+                {currentUserName}
+              </span>
             </div>
-          </div>
 
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={0.1}
-            value={score}
-            onChange={(e) => handleScoreChange(e.target.value)}
-            aria-label="Selector deslizante de puntaje"
-            className="w-full cursor-pointer"
-            style={{ accentColor: myColor }}
-          />
-
-          <div className="tabular grid grid-cols-5 gap-1.5">
-            {QUICK_SCORES.map((val) => {
-              const selected = score === val;
-              return (
-                <button
-                  key={val}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setScore(val)}
-                  className="pressable rounded-xl border-2 py-1.5 text-[13px] font-bold"
-                  style={{
-                    borderColor: selected ? myColor : "var(--border-soft)",
-                    backgroundColor: selected ? myColor : "var(--surface)",
-                    color: selected ? "var(--accent-on-solid)" : "var(--fg)",
-                  }}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="new-visit-dish"
+                  className="text-[12px] font-semibold"
+                  style={{ color: "var(--fg-muted)" }}
                 >
-                  {formatScore(val)}
-                </button>
-              );
-            })}
-          </div>
+                  Qué comiste
+                </label>
+                <input
+                  id="new-visit-dish"
+                  type="text"
+                  placeholder={dishPlaceholder}
+                  value={newVisitDish}
+                  onChange={(e) => setNewVisitDish(e.target.value)}
+                  className="zine-input"
+                />
+              </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="my-review-note" className="text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
-              Tu reseña
-            </label>
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="new-visit-date"
+                  className="text-[12px] font-semibold"
+                  style={{ color: "var(--fg-muted)" }}
+                >
+                  Fecha
+                </label>
+                <input
+                  id="new-visit-date"
+                  type="date"
+                  value={newVisitDate}
+                  onChange={(e) => setNewVisitDate(e.target.value)}
+                  className="zine-input"
+                />
+              </div>
+            </div>
+
+            <ScorePicker score={newVisitScore} color={myColor} onChange={setNewVisitScore} />
+
             <textarea
-              id="my-review-note"
-              rows={3}
-              placeholder="Qué pidieron, qué estuvo bueno o qué evitar..."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="Comentario opcional de esta vez..."
+              value={newVisitNote}
+              onChange={(e) => setNewVisitNote(e.target.value)}
               className="zine-input"
             />
-          </div>
 
-          {error && (
-            <p
-              role="alert"
-              className="m-0 rounded-xl px-3 py-2 text-[13px] font-semibold"
-              style={{ backgroundColor: "var(--danger-soft)", color: "var(--danger)" }}
-            >
-              {error}
-            </p>
-          )}
-
-          <div className="flex items-center gap-2">
-            {myExisting && (
+            <div className="flex items-center gap-2">
+              {place.visits.length > 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setNewVisitOpen(false)}
+                  className="pressable rounded-xl border-2 px-3 py-2.5 text-[13px] font-bold"
+                  style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
+                >
+                  Cancelar
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}
-                onClick={removeMyRating}
-                className="pressable rounded-xl border-2 px-3 py-2.5 text-[13px] font-bold"
-                style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
+                onClick={handleCreateVisit}
+                className="pressable flex-1 rounded-xl px-4 py-2.5 text-[14px] font-bold disabled:opacity-60"
+                style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
               >
-                Quitar
+                {busy
+                  ? "Guardando..."
+                  : isDelivery
+                    ? "Guardar pedido"
+                    : "Guardar visita"}
               </button>
-            )}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={saveMyRating}
-              className="pressable flex-1 rounded-xl px-4 py-2.5 text-[14px] font-bold disabled:opacity-60"
-              style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
-            >
-              {busy ? "Guardando..." : "Guardar mi puntaje"}
-            </button>
-          </div>
-        </div>
+            </div>
+          </section>
+        )}
 
-        {/* Food Photos Gallery & Upload */}
-        <section
-          className="flex flex-col gap-3 rounded-2xl border-2 p-4"
-          style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--bg)" }}
-          aria-label="Fotos de la comida"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[14px] font-bold">
-              Fotos de la comida ({place.photos.length})
+        {/* Visits History */}
+        {place.visits.length > 0 && (
+          <section className="flex flex-col gap-3" aria-label="Historial de visitas">
+            {place.visits.map((visit, idx) => {
+              const visitNumber = place.visits.length - idx;
+              const dateLabel = formatVisitDate(visit.visitedAt);
+              const visitAvg = computeAverage(visit.entries);
+              const myEntry = visit.entries.find((e) => e.userId === currentUserId);
+              const isEditingThis = editingVisitId === visit.id;
+              const isEditingDate = editingDateVisitId === visit.id;
+              const isUploadingHere = uploadingVisitId === visit.id;
+              const captionVal = photoCaptions[visit.id] ?? "";
+
+              return (
+                <article
+                  key={visit.id}
+                  className="flex flex-col gap-3 rounded-2xl border-2 p-3.5"
+                  style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--bg)" }}
+                >
+                  {/* Visit header */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="font-display text-[15px] font-bold">
+                        {visitLabelCap} #{visitNumber}
+                      </span>
+                      {dateLabel && (
+                        <span
+                          className="text-[12px] font-semibold"
+                          style={{ color: "var(--fg-muted)" }}
+                        >
+                          {dateLabel}
+                        </span>
+                      )}
+                      {visitAvg !== null && visit.entries.length > 1 && (
+                        <span
+                          className="tabular rounded-lg px-2 py-0.5 text-[12px] font-bold"
+                          style={{
+                            backgroundColor: "var(--pill-bg)",
+                            color: "var(--pill-fg)",
+                          }}
+                        >
+                          Prom. {formatScore(visitAvg)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isEditingDate) {
+                            setEditingDateVisitId(null);
+                          } else {
+                            setEditingDateVisitId(visit.id);
+                            setEditDateValue(visit.visitedAt);
+                          }
+                        }}
+                        aria-label="Cambiar fecha"
+                        title="Cambiar fecha"
+                        className="pressable inline-flex h-7 w-7 items-center justify-center rounded-lg"
+                        style={{ color: "var(--fg-muted)" }}
+                      >
+                        <Calendar className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handleDeleteVisit(visit.id)}
+                        aria-label="Eliminar visita"
+                        title={
+                          confirmDeleteVisitId === visit.id
+                            ? "Confirmar borrado"
+                            : "Eliminar visita"
+                        }
+                        className="pressable inline-flex h-7 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] font-bold"
+                        style={
+                          confirmDeleteVisitId === visit.id
+                            ? { backgroundColor: "var(--danger-soft)", color: "var(--danger)" }
+                            : { color: "var(--fg-muted)" }
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {confirmDeleteVisitId === visit.id && <span>Borrar</span>}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Optional date editor */}
+                  {isEditingDate && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={editDateValue}
+                        onChange={(e) => setEditDateValue(e.target.value)}
+                        className="zine-input flex-1"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handleSaveVisitDate(visit.id)}
+                        className="pressable rounded-xl px-3 py-2 text-[12px] font-bold"
+                        style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
+                      >
+                        OK
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Entries for this visit */}
+                  {visit.entries.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      {visit.entries.map((entry) => {
+                        const color = accentCssVar(entry.userAccent);
+                        return (
+                          <div
+                            key={entry.id}
+                            className="flex flex-col gap-0.5 rounded-xl px-3 py-2"
+                            style={{ backgroundColor: "var(--surface)" }}
+                          >
+                            <div className="flex items-center justify-between gap-2 text-[13px] font-bold">
+                              <span style={{ color }}>{entry.userName}</span>
+                              <span className="tabular" style={{ color }}>
+                                {formatScore(entry.score)} / 10
+                              </span>
+                            </div>
+                            {entry.dish && (
+                              <div className="text-[13px] font-semibold">{entry.dish}</div>
+                            )}
+                            {entry.note && (
+                              <p
+                                className="m-0 text-[12.5px]"
+                                style={{ color: "var(--fg-muted)" }}
+                              >
+                                {entry.note}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Current user entry editor toggle or inline form */}
+                  {isEditingThis ? (
+                    <div
+                      className="flex flex-col gap-3 rounded-xl border-2 p-3"
+                      style={{ borderColor: myColor, backgroundColor: "var(--surface)" }}
+                    >
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor={`dish-${visit.id}`}
+                          className="text-[12px] font-semibold"
+                          style={{ color: "var(--fg-muted)" }}
+                        >
+                          Qué comiste ({currentUserName})
+                        </label>
+                        <input
+                          id={`dish-${visit.id}`}
+                          type="text"
+                          placeholder={dishPlaceholder}
+                          value={entryDish}
+                          onChange={(e) => setEntryDish(e.target.value)}
+                          className="zine-input"
+                        />
+                      </div>
+
+                      <ScorePicker
+                        score={entryScore}
+                        color={myColor}
+                        onChange={setEntryScore}
+                      />
+
+                      <textarea
+                        rows={2}
+                        placeholder="Comentario opcional..."
+                        value={entryNote}
+                        onChange={(e) => setEntryNote(e.target.value)}
+                        className="zine-input"
+                      />
+
+                      <div className="flex items-center gap-2">
+                        {myEntry && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleDeleteEntry(visit.id)}
+                            className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
+                            style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
+                          >
+                            Quitar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setEditingVisitId(null)}
+                          className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
+                          style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => handleSaveEntry(visit.id)}
+                          className="pressable flex-1 rounded-xl px-3 py-2 text-[13px] font-bold disabled:opacity-60"
+                          style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
+                        >
+                          {busy ? "Guardando..." : "Guardar"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startEditingEntry(visit)}
+                      className="pressable self-start rounded-full border-2 px-3 py-1 text-[12px] font-bold"
+                      style={{
+                        borderColor: myEntry ? "var(--border-soft)" : myColor,
+                        backgroundColor: "var(--surface)",
+                        color: myEntry ? "var(--fg)" : myColor,
+                      }}
+                    >
+                      {myEntry ? "Editar lo que comí" : "+ Sumar lo que comí"}
+                    </button>
+                  )}
+
+                  {/* Visit Photos */}
+                  <div
+                    className="flex flex-col gap-2 border-t pt-2.5"
+                    style={{ borderColor: "var(--border-soft)" }}
+                  >
+                    {visit.photos.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {visit.photos.map((photo) => (
+                          <div
+                            key={photo.id}
+                            className="group relative aspect-square overflow-hidden rounded-xl border-2"
+                            style={{ borderColor: "var(--border-soft)" }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setLightboxPhoto(photo)}
+                              className="h-full w-full"
+                              aria-label={photo.caption || `Foto de ${place.name}`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={photo.url}
+                                alt={photo.caption || `Foto de ${place.name}`}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleDeletePhoto(photo.id)}
+                              aria-label="Borrar foto"
+                              className="pressable absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full"
+                              style={{ backgroundColor: "rgba(0,0,0,0.68)", color: "#ffffff" }}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Plato de la foto (opcional)"
+                        value={captionVal}
+                        onChange={(e) =>
+                          setPhotoCaptions((prev) => ({
+                            ...prev,
+                            [visit.id]: e.target.value,
+                          }))
+                        }
+                        className="zine-input flex-1"
+                      />
+                      <input
+                        ref={(el) => {
+                          fileInputsRef.current[visit.id] = el;
+                        }}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/avif"
+                        onChange={(e) => handlePhotoSelected(visit.id, e)}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploadingHere}
+                        onClick={() => fileInputsRef.current[visit.id]?.click()}
+                        className="pressable inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border-2 px-3 py-2 text-[12px] font-bold whitespace-nowrap disabled:opacity-60"
+                        style={{
+                          borderColor: "var(--border)",
+                          backgroundColor: "var(--surface)",
+                        }}
+                      >
+                        <Camera className="h-3.5 w-3.5" />
+                        {isUploadingHere ? "Subiendo..." : "Foto"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        )}
+
+        {/* Unlinked legacy photos (if any exist) */}
+        {unlinkedPhotos.length > 0 && (
+          <section
+            className="mt-4 flex flex-col gap-2.5 rounded-2xl border-2 p-3.5"
+            style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--bg)" }}
+            aria-label="Otras fotos"
+          >
+            <span className="text-[13px] font-bold">
+              Otras fotos ({unlinkedPhotos.length})
             </span>
-          </div>
-
-          {place.photos.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
-              {place.photos.map((photo) => (
-                <div key={photo.id} className="group relative aspect-square overflow-hidden rounded-xl border-2" style={{ borderColor: "var(--border-soft)" }}>
+              {unlinkedPhotos.map((photo) => (
+                <div
+                  key={photo.id}
+                  className="group relative aspect-square overflow-hidden rounded-xl border-2"
+                  style={{ borderColor: "var(--border-soft)" }}
+                >
                   <button
                     type="button"
                     onClick={() => setLightboxPhoto(photo)}
@@ -726,38 +1292,8 @@ export function PlaceSheet({
                 </div>
               ))}
             </div>
-          )}
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="text"
-              placeholder="Descripción opcional (ej. Tabla 1, café...)"
-              value={photoCaption}
-              onChange={(e) => setPhotoCaption(e.target.value)}
-              className="zine-input flex-1"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
-              onChange={handlePhotoSelected}
-              className="hidden"
-            />
-            <button
-              type="button"
-              disabled={uploadingPhoto}
-              onClick={() => fileInputRef.current?.click()}
-              className="pressable inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border-2 px-4 py-2.5 text-[13px] font-bold whitespace-nowrap disabled:opacity-60"
-              style={{
-                borderColor: "var(--border)",
-                backgroundColor: "var(--surface)",
-              }}
-            >
-              <Camera className="h-4 w-4" />
-              {uploadingPhoto ? "Subiendo..." : "Subir foto"}
-            </button>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
 
       {/* Full-size Photo Lightbox */}

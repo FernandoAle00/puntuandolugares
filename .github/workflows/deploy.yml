@@ -1,0 +1,77 @@
+name: Check & Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          trap 'rm -f ~/.ssh/deploy_key' EXIT
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "${VPS_USER}@${VPS_HOST}" '
+            set -eu
+            cd /opt/puntuandolugares
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose up -d --build
+
+            deadline=$(($(date +%s) + 45))
+            status=""
+            while [ "$(date +%s)" -lt "$deadline" ]; do
+              status=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" http://127.0.0.1:3010 || true)
+              if [ "$status" = "200" ]; then
+                echo "Healthcheck passed (HTTP 200)"
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo "Healthcheck failed after 45s (last status: ${status:-none})"
+            exit 1
+          '

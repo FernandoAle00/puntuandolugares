@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
-import { foodGroup, friendship, groupMember, user } from "@/db/schema";
+import { foodGroup, friendship, groupMember, place, rating, user } from "@/db/schema";
 import type {
   CreateGroupInput,
   FriendItem,
@@ -320,6 +320,8 @@ export async function createGroupForUser(
 
 /**
  * Adds an accepted friend to a group the caller already belongs to.
+ * If the group still holds the initial placeholder Juli account (juli@puntuando.local),
+ * seamlessly transfers all its ratings in this group to the real account and removes the placeholder.
  */
 export async function addFriendToGroup(
   groupId: string,
@@ -354,12 +356,64 @@ export async function addFriendToGroup(
     .limit(1);
 
   if (!existing) {
-    await db.insert(groupMember).values({
-      id: crypto.randomUUID(),
-      groupId,
-      userId: friendUserId,
-      role: "member",
-      joinedAt: new Date(),
+    // Check if the group currently has the seeded placeholder account for Juli
+    const [placeholderMember] = await db
+      .select({ userId: user.id })
+      .from(groupMember)
+      .innerJoin(user, eq(groupMember.userId, user.id))
+      .where(
+        and(
+          eq(groupMember.groupId, groupId),
+          eq(user.email, "juli@puntuando.local"),
+        ),
+      )
+      .limit(1);
+
+    await db.transaction(async (tx) => {
+      await tx.insert(groupMember).values({
+        id: crypto.randomUUID(),
+        groupId,
+        userId: friendUserId,
+        role: "member",
+        joinedAt: new Date(),
+      });
+
+      if (placeholderMember && placeholderMember.userId !== friendUserId) {
+        const groupPlaces = await tx
+          .select({ id: place.id })
+          .from(place)
+          .where(eq(place.groupId, groupId));
+
+        const placeIds = groupPlaces.map((p) => p.id);
+        if (placeIds.length > 0) {
+          await tx
+            .update(rating)
+            .set({ userId: friendUserId, updatedAt: new Date() })
+            .where(
+              and(
+                eq(rating.userId, placeholderMember.userId),
+                inArray(rating.placeId, placeIds),
+              ),
+            );
+        }
+
+        // Give the incoming friend Juli's distinct orange accent if it still has the default teal
+        const [friendRow] = await tx
+          .select({ accentColor: user.accentColor })
+          .from(user)
+          .where(eq(user.id, friendUserId))
+          .limit(1);
+
+        if (friendRow?.accentColor === "teal") {
+          await tx
+            .update(user)
+            .set({ accentColor: "orange", updatedAt: new Date() })
+            .where(eq(user.id, friendUserId));
+        }
+
+        // Remove placeholder account completely (cascades its membership & friendship)
+        await tx.delete(user).where(eq(user.id, placeholderMember.userId));
+      }
     });
   }
 

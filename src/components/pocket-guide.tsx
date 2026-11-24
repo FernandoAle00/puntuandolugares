@@ -126,8 +126,24 @@ export function PocketGuide({
     setSocialModal((prev) => ({ ...prev, open: false }));
   }
 
-  function handleGroupUpdated(updated: GroupSummary) {
+  async function handleGroupUpdated(updated: GroupSummary) {
     setGroups((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
+    try {
+      const [placesRes, socialRes] = await Promise.all([
+        fetch("/api/places"),
+        fetch("/api/friends"),
+      ]);
+      if (placesRes.ok) {
+        const data = (await placesRes.json()) as { places?: PlaceWithRatings[] };
+        if (data.places) setPlaces(data.places);
+      }
+      if (socialRes.ok) {
+        const data = (await socialRes.json()) as { social?: SocialSnapshot };
+        if (data.social) setSocial(data.social);
+      }
+    } catch {
+      router.refresh();
+    }
   }
 
   async function handleLogout() {

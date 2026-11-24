@@ -233,6 +233,17 @@ async function ensureGroup(ferId: string, juliId: string): Promise<string> {
 }
 
 async function main() {
+  // Never re-seed placeholder accounts once the database already has a group
+  const [existingGroup] = await db
+    .select({ id: foodGroup.id })
+    .from(foodGroup)
+    .limit(1);
+
+  if (existingGroup) {
+    console.log("Seed omitido: la base de datos ya fue inicializada.");
+    return;
+  }
+
   const ferEmail = process.env.SEED_FER_EMAIL || "fer@puntuando.local";
   const ferPassword = process.env.SEED_FER_PASSWORD || "FerPuntuando2026!";
   const juliEmail = process.env.SEED_JULI_EMAIL || "juli@puntuando.local";

@@ -6,6 +6,7 @@ export const MEALS: readonly MealType[] = [
   "almuerzo",
   "merienda",
   "cena",
+  "postre",
 ] as const;
 
 export const MEAL_LABELS: Record<MealType, string> = {
@@ -13,6 +14,7 @@ export const MEAL_LABELS: Record<MealType, string> = {
   almuerzo: "Almuerzo",
   merienda: "Merienda",
   cena: "Cena",
+  postre: "Postre",
 };
 
 export const SERVICE_TYPES: readonly ServiceType[] = [
@@ -40,7 +42,7 @@ export const ACCENTS: readonly AccentColor[] = [
   "berry",
 ] as const;
 
-export const mealSchema = z.enum(["desayuno", "almuerzo", "merienda", "cena"]);
+export const mealSchema = z.enum(["desayuno", "almuerzo", "merienda", "cena", "postre"]);
 export const serviceTypeSchema = z.enum(["dine_in", "delivery", "ice_cream"]);
 
 export const scoreSchema = z
@@ -70,7 +72,7 @@ export const createPlaceSchema = z.object({
   meals: z
     .array(mealSchema)
     .min(1, "Elegí al menos un momento")
-    .max(4)
+    .max(5)
     .transform((arr) => Array.from(new Set(arr))),
   initialRating: z
     .object({
@@ -94,7 +96,7 @@ export const updatePlaceSchema = z.object({
   meals: z
     .array(mealSchema)
     .min(1, "Elegí al menos un momento")
-    .max(4)
+    .max(5)
     .transform((arr) => Array.from(new Set(arr)))
     .optional(),
 });

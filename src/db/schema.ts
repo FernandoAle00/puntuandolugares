@@ -8,7 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export type MealType = "desayuno" | "almuerzo" | "merienda" | "cena";
+export type MealType = "desayuno" | "almuerzo" | "merienda" | "cena" | "postre";
 export type ServiceType = "dine_in" | "delivery" | "ice_cream";
 export type AccentColor = "teal" | "orange" | "cobalt" | "berry";
 export type FriendshipStatus = "pending" | "accepted";

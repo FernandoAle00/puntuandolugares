@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  Check,
   Dices,
   IceCreamCone,
   LogOut,
   MapPin,
   Plus,
+  RefreshCw,
   Search,
   ShoppingBag,
   User,
@@ -14,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AddPlaceModal } from "@/components/add-place-modal";
 import { accentCssVar, PlaceSheet } from "@/components/place-sheet";
 import { SocialSheet } from "@/components/social-sheet";
@@ -78,6 +80,15 @@ export function PocketGuide({
     tab: "friends",
   });
   const [pickedByScope, setPickedByScope] = useState<Record<string, string>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, []);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) ?? null,
@@ -203,6 +214,51 @@ export function PocketGuide({
     }
   }
 
+  async function handleRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    setJustRefreshed(false);
+    try {
+      const [groupsRes, placesRes, socialRes] = await Promise.all([
+        fetch("/api/groups", { cache: "no-store" }),
+        fetch("/api/places", { cache: "no-store" }),
+        fetch("/api/friends", { cache: "no-store" }),
+      ]);
+
+      if (groupsRes.status === 401 || placesRes.status === 401 || socialRes.status === 401) {
+        router.refresh();
+        return;
+      }
+
+      if (groupsRes.ok) {
+        const data = (await groupsRes.json()) as { groups?: GroupSummary[] };
+        if (data.groups) {
+          const nextGroups = data.groups;
+          setGroups(nextGroups);
+          setActiveGroupId((prev) =>
+            prev && nextGroups.some((g) => g.id === prev) ? prev : (nextGroups[0]?.id ?? null),
+          );
+        }
+      }
+      if (placesRes.ok) {
+        const data = (await placesRes.json()) as { places?: PlaceWithRatings[] };
+        if (data.places) setPlaces(data.places);
+      }
+      if (socialRes.ok) {
+        const data = (await socialRes.json()) as { social?: SocialSnapshot };
+        if (data.social) setSocial(data.social);
+      }
+
+      setJustRefreshed(true);
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => setJustRefreshed(false), 900);
+    } catch {
+      router.refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function handleLogout() {
     await authClient.signOut();
     router.refresh();
@@ -317,40 +373,65 @@ export function PocketGuide({
           </button>
         </div>
 
-        {activeGroup && (
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setSearchOpen((v) => !v);
-                if (searchOpen) setQuery("");
-              }}
-              aria-label="Buscar lugares"
-              aria-pressed={searchOpen}
-              className="pressable inline-flex h-9 w-9 items-center justify-center rounded-full border-2"
-              style={{
-                borderColor: "var(--border)",
-                backgroundColor: searchOpen ? "var(--highlight-bg)" : "var(--surface)",
-                color: searchOpen ? "var(--highlight-fg)" : "var(--fg)",
-              }}
-            >
-              {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-            </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-label={refreshing ? "Actualizando datos" : "Actualizar datos"}
+            aria-busy={refreshing}
+            title="Actualizar"
+            className="pressable inline-flex h-9 w-9 items-center justify-center rounded-full border-2 disabled:opacity-60"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: justRefreshed ? "var(--highlight-bg)" : "var(--surface)",
+              color: justRefreshed ? "var(--highlight-fg)" : "var(--fg)",
+            }}
+          >
+            {justRefreshed ? (
+              <Check className="h-4 w-4 stroke-[2.5]" />
+            ) : (
+              <RefreshCw
+                className={`h-4 w-4 transition-transform duration-300 ${refreshing ? "rotate-180" : ""}`}
+              />
+            )}
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="pressable inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3.5 text-[13px] font-bold whitespace-nowrap"
-              style={{
-                backgroundColor: "var(--badge-bg)",
-                color: "var(--badge-fg)",
-              }}
-            >
-              <Plus className="h-4 w-4 stroke-[2.5]" />
-              Sumar
-            </button>
-          </div>
-        )}
+          {activeGroup && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchOpen((v) => !v);
+                  if (searchOpen) setQuery("");
+                }}
+                aria-label="Buscar lugares"
+                aria-pressed={searchOpen}
+                className="pressable inline-flex h-9 w-9 items-center justify-center rounded-full border-2"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: searchOpen ? "var(--highlight-bg)" : "var(--surface)",
+                  color: searchOpen ? "var(--highlight-fg)" : "var(--fg)",
+                }}
+              >
+                {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="pressable inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3.5 text-[13px] font-bold whitespace-nowrap"
+                style={{
+                  backgroundColor: "var(--badge-bg)",
+                  color: "var(--badge-fg)",
+                }}
+              >
+                <Plus className="h-4 w-4 stroke-[2.5]" />
+                Sumar
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {!activeGroup ? (

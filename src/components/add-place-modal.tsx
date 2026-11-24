@@ -44,7 +44,7 @@ export function AddPlaceModal({
   useEffect(() => {
     if (open) {
       setServiceType(defaultServiceType);
-      setMeals(defaultServiceType === "ice_cream" ? ["merienda", "cena"] : ["cena"]);
+      setMeals(defaultServiceType === "ice_cream" ? ["postre"] : ["cena"]);
       setVisitedAt(getTodayIsoDate());
     }
   }, [open, defaultServiceType]);
@@ -63,7 +63,9 @@ export function AddPlaceModal({
   function handleServiceTypeChange(next: ServiceType) {
     setServiceType(next);
     if (next === "ice_cream" && meals.length === 1 && meals[0] === "cena") {
-      setMeals(["merienda", "cena"]);
+      setMeals(["postre"]);
+    } else if (next !== "ice_cream" && meals.length === 1 && meals[0] === "postre") {
+      setMeals(["cena"]);
     }
   }
 
@@ -122,7 +124,7 @@ export function AddPlaceModal({
       setName("");
       setAddress("");
       setServiceType(defaultServiceType);
-      setMeals(defaultServiceType === "ice_cream" ? ["merienda", "cena"] : ["cena"]);
+      setMeals(defaultServiceType === "ice_cream" ? ["postre"] : ["cena"]);
       setRateNow(false);
       setDish("");
       setVisitedAt(getTodayIsoDate());

@@ -238,9 +238,12 @@ describe("domain validation", () => {
         groupId: "g-fer-juli",
         name: "Rapanui",
         serviceType: "ice_cream",
-        meals: ["merienda"],
-      }).serviceType,
-    ).toBe("ice_cream");
+        meals: ["postre", "merienda"],
+      }),
+    ).toMatchObject({
+      serviceType: "ice_cream",
+      meals: ["postre", "merienda"],
+    });
 
     expect(
       createPlaceSchema.safeParse({

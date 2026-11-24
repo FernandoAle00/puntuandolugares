@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computeAverage,
+  computeBreakdownAverage,
   computeGap,
+  computePlaceBreakdown,
   createGroupSchema,
   createPlaceSchema,
   createVisitSchema,
@@ -13,9 +15,15 @@ import {
   pickRandomPending,
   scoreSchema,
   updatePlaceSchema,
+  upsertVisitEntrySchema,
   type PlaceVisit,
   type PlaceWithRatings,
+  type ScoreBreakdown,
 } from "@/lib/domain";
+
+function uniformScores(score: number): ScoreBreakdown {
+  return { service: score, food: score, place: score, price: score };
+}
 
 const SAMPLE_PLACES: PlaceWithRatings[] = [
   {
@@ -35,6 +43,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
         userName: "Fer",
         userAccent: "teal",
         score: 9.5,
+        scores: { service: 9.5, food: 10, place: 9.5, price: 9 },
         note: "",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -44,6 +53,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
         userName: "Juli",
         userAccent: "orange",
         score: 9,
+        scores: uniformScores(9),
         note: "",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -61,6 +71,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
             userAccent: "teal",
             dish: "Sorrentinos de calabaza",
             score: 9.5,
+            scores: { service: 9.5, food: 10, place: 9.5, price: 9 },
+            legacyScore: null,
             note: "",
             updatedAt: "2026-10-12T21:00:00.000Z",
           },
@@ -71,6 +83,8 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
             userAccent: "orange",
             dish: "Bife de chorizo",
             score: 9,
+            scores: uniformScores(9),
+            legacyScore: null,
             note: "",
             updatedAt: "2026-10-12T21:00:00.000Z",
           },
@@ -97,6 +111,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
         userName: "Fer",
         userAccent: "teal",
         score: 8,
+        scores: uniformScores(8),
         note: "",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -106,6 +121,7 @@ const SAMPLE_PLACES: PlaceWithRatings[] = [
         userName: "Juli",
         userAccent: "orange",
         score: 5,
+        scores: uniformScores(5),
         note: "",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -161,6 +177,7 @@ const EXTRA_SERVICE_PLACES: PlaceWithRatings[] = [
         userName: "Fer",
         userAccent: "teal",
         score: 8.5,
+        scores: uniformScores(8.5),
         note: "",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -199,6 +216,7 @@ const EXTRA_SERVICE_PLACES: PlaceWithRatings[] = [
         userName: "Juli",
         userAccent: "orange",
         score: 9.2,
+        scores: uniformScores(9.2),
         note: "Pistacho increíble",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -278,27 +296,44 @@ describe("domain validation", () => {
     });
   });
 
-  it("validates visit creation payloads", () => {
+  it("validates visit creation payloads with 4-category scores", () => {
     const parsed = createVisitSchema.parse({
       visitedAt: "2026-11-23",
       dish: "  Milanesa napolitana  ",
-      score: 8.5,
+      scores: { service: 9, food: 9.5, place: 8, price: 7.5 },
       note: " Muy rica ",
     });
     expect(parsed).toEqual({
       visitedAt: "2026-11-23",
       dish: "Milanesa napolitana",
-      score: 8.5,
+      scores: { service: 9, food: 9.5, place: 8, price: 7.5 },
       note: "Muy rica",
     });
 
     expect(
       createVisitSchema.safeParse({
-        visitedAt: "23/11/2026",
+        visitedAt: "2026-11-23",
         dish: "Pizza",
-        score: 8,
+        scores: { service: 9, food: 8, place: 8 },
       }).success,
     ).toBe(false);
+
+    expect(
+      createVisitSchema.safeParse({
+        visitedAt: "23/11/2026",
+        dish: "Pizza",
+        scores: uniformScores(8),
+      }).success,
+    ).toBe(false);
+
+    // Omitting dish/note on visit entry update leaves them undefined so existing text is preserved
+    expect(
+      upsertVisitEntrySchema.parse({
+        scores: { service: 9, food: 8, place: 8, price: 7 },
+      }),
+    ).toEqual({
+      scores: { service: 9, food: 8, place: 8, price: 7 },
+    });
   });
 
   it("normalizes friend email and validates group creation", () => {
@@ -315,7 +350,20 @@ describe("domain validation", () => {
 });
 
 describe("rating calculations, visits, and filtering", () => {
-  it("computes average and gap accurately", () => {
+  it("computes 4-category breakdown average, overall average, and gap accurately", () => {
+    expect(computeBreakdownAverage({ service: 9, food: 10, place: 8, price: 7 })).toBe(8.5);
+    const boundaryMean = computeBreakdownAverage({ service: 1, food: 1, place: 1.1, price: 8.7 });
+    expect(boundaryMean).toBe(2.95);
+    expect(formatScore(boundaryMean)).toBe("3");
+    expect(computeAverage([{ score: boundaryMean }])).toBe(3);
+    expect(
+      computePlaceBreakdown([
+        { scores: uniformScores(1) },
+        { scores: uniformScores(1) },
+        { scores: uniformScores(1.1) },
+        { scores: uniformScores(8.7) },
+      ]),
+    ).toEqual(uniformScores(3));
     expect(computeAverage([{ score: 9.5 }, { score: 9 }])).toBe(9.3);
     expect(computeAverage([])).toBeNull();
     expect(computeGap([{ score: 8 }, { score: 5 }])).toBe(3);
@@ -324,7 +372,7 @@ describe("rating calculations, visits, and filtering", () => {
     expect(formatScore(9)).toBe("9");
   });
 
-  it("derives each user's average score across multiple visits", () => {
+  it("derives each user's average score and 4-category breakdown across visits while ignoring legacy unscored entries", () => {
     const visits: PlaceVisit[] = [
       {
         id: "v2",
@@ -338,6 +386,8 @@ describe("rating calculations, visits, and filtering", () => {
             userAccent: "teal",
             dish: "Ñoquis",
             score: 9,
+            scores: { service: 9, food: 10, place: 8, price: 9 },
+            legacyScore: null,
             note: "Mejor que la primera vez",
             updatedAt: "2026-11-23T21:00:00.000Z",
           },
@@ -356,6 +406,8 @@ describe("rating calculations, visits, and filtering", () => {
             userAccent: "teal",
             dish: "Milanesa",
             score: 8,
+            scores: { service: 7, food: 8, place: 8, price: 9 },
+            legacyScore: null,
             note: "Bien",
             updatedAt: "2026-11-01T21:00:00.000Z",
           },
@@ -366,7 +418,21 @@ describe("rating calculations, visits, and filtering", () => {
             userAccent: "orange",
             dish: "Ensalada",
             score: 7.5,
+            scores: { service: 8, food: 7, place: 8, price: 7 },
+            legacyScore: null,
             note: "Rica",
+            updatedAt: "2026-11-01T21:00:00.000Z",
+          },
+          {
+            id: "e-legacy",
+            userId: "legacy-user",
+            userName: "Invitado",
+            userAccent: "cobalt",
+            dish: "Empanadas",
+            score: null,
+            scores: null,
+            legacyScore: 9.5,
+            note: "Reseña vieja conservada",
             updatedAt: "2026-11-01T21:00:00.000Z",
           },
         ],
@@ -375,11 +441,68 @@ describe("rating calculations, visits, and filtering", () => {
     ];
 
     const derived = deriveRatingsFromVisits(visits);
-    expect(derived.map((r) => ({ user: r.userName, score: r.score, note: r.note }))).toEqual([
-      { user: "Fer", score: 8.5, note: "Mejor que la primera vez" },
-      { user: "Juli", score: 7.5, note: "Rica" },
+    expect(
+      derived.map((r) => ({ user: r.userName, score: r.score, scores: r.scores, note: r.note })),
+    ).toEqual([
+      {
+        user: "Fer",
+        score: 8.5,
+        scores: { service: 8, food: 9, place: 8, price: 9 },
+        note: "Mejor que la primera vez",
+      },
+      {
+        user: "Juli",
+        score: 7.5,
+        scores: { service: 8, food: 7, place: 8, price: 7 },
+        note: "Rica",
+      },
     ]);
     expect(computeAverage(derived)).toBe(8);
+    expect(computePlaceBreakdown(derived)).toEqual({
+      service: 8,
+      food: 8,
+      place: 8,
+      price: 8,
+    });
+
+    // Regression: avoids double-rounding drift between per-person averages and place average (8 and 8.075 -> 8.0375 -> 8)
+    const precisionVisits: PlaceVisit[] = [
+      {
+        id: "vp1",
+        visitedAt: "2026-11-24",
+        createdAt: "2026-11-24T21:00:00.000Z",
+        entries: [
+          {
+            id: "ep1",
+            userId: "fer",
+            userName: "Fer",
+            userAccent: "teal",
+            dish: "",
+            score: 8,
+            scores: { service: 8, food: 8, place: 8, price: 8 },
+            legacyScore: null,
+            note: "",
+            updatedAt: "2026-11-24T21:00:00.000Z",
+          },
+          {
+            id: "ep2",
+            userId: "juli",
+            userName: "Juli",
+            userAccent: "orange",
+            dish: "",
+            score: 8.075,
+            scores: { service: 8.3, food: 8, place: 8, price: 8 },
+            legacyScore: null,
+            note: "",
+            updatedAt: "2026-11-24T21:00:00.000Z",
+          },
+        ],
+        photos: [],
+      },
+    ];
+    const precisionDerived = deriveRatingsFromVisits(precisionVisits);
+    expect(computeAverage(precisionDerived)).toBe(8);
+
     expect(formatVisitDate("2026-11-23", 2026)).toBe("23 nov");
     expect(formatVisitDate("2025-08-05", 2026)).toBe("5 ago 2025");
     expect(formatVisitDate("")).toBe("");
@@ -408,7 +531,7 @@ describe("rating calculations, visits, and filtering", () => {
     expect(picked?.id).toBe("troppo");
   });
 
-  it("filters places by serviceType including ice_cream", () => {
+  it("filters places by serviceType including ice_cream and repeatMarked", () => {
     const combined = [...SAMPLE_PLACES, ...EXTRA_SERVICE_PLACES];
 
     expect(

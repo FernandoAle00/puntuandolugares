@@ -1,15 +1,18 @@
 "use client";
 
-import { IceCreamCone, Minus, Plus, ShoppingBag, Utensils, X } from "lucide-react";
+import { IceCreamCone, ShoppingBag, Utensils, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { CategoryScorePicker } from "@/components/category-score-picker";
 import type { MealType, ServiceType } from "@/db/schema";
 import {
+  DEFAULT_SCORE_BREAKDOWN,
   getTodayIsoDate,
   MEAL_LABELS,
   MEALS,
   SERVICE_LABELS,
   SERVICE_TYPES,
   type PlaceWithRatings,
+  type ScoreBreakdown,
 } from "@/lib/domain";
 
 interface AddPlaceModalProps {
@@ -36,7 +39,7 @@ export function AddPlaceModal({
   const [rateNow, setRateNow] = useState(false);
   const [dish, setDish] = useState("");
   const [visitedAt, setVisitedAt] = useState(() => getTodayIsoDate());
-  const [score, setScore] = useState(8);
+  const [scores, setScores] = useState<ScoreBreakdown>({ ...DEFAULT_SCORE_BREAKDOWN });
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -78,18 +81,6 @@ export function AddPlaceModal({
     });
   }
 
-  function stepScore(delta: number) {
-    setScore((prev) => Math.min(10, Math.max(1, Math.round((prev + delta) * 10) / 10)));
-  }
-
-  function handleScoreInput(raw: string) {
-    const normalized = raw.replace(",", ".");
-    const parsed = parseFloat(normalized);
-    if (!Number.isNaN(parsed)) {
-      setScore(Math.min(10, Math.max(1, Math.round(parsed * 10) / 10)));
-    }
-  }
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -105,7 +96,7 @@ export function AddPlaceModal({
           address,
           serviceType,
           meals,
-          ...(rateNow ? { initialRating: { dish, score, note, visitedAt } } : {}),
+          ...(rateNow ? { initialRating: { dish, scores, note, visitedAt } } : {}),
         }),
       });
 
@@ -128,7 +119,7 @@ export function AddPlaceModal({
       setRateNow(false);
       setDish("");
       setVisitedAt(getTodayIsoDate());
-      setScore(8);
+      setScores({ ...DEFAULT_SCORE_BREAKDOWN });
       setNote("");
       setSaving(false);
       onClose();
@@ -357,54 +348,10 @@ export function AddPlaceModal({
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-bold">Tu puntaje (1 a 10)</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => stepScore(-0.1)}
-                    aria-label="Restar 0,1"
-                    className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-                    style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-                  >
-                    <Minus className="h-3.5 w-3.5" />
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    step={0.1}
-                    inputMode="decimal"
-                    aria-label="Puntaje numérico"
-                    value={score}
-                    onChange={(e) => handleScoreInput(e.target.value)}
-                    className="font-display tabular w-16 rounded-lg border-2 py-1 text-center text-[18px] font-bold"
-                    style={{
-                      borderColor: "var(--border-soft)",
-                      backgroundColor: "var(--surface)",
-                      color: "var(--fg)",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => stepScore(0.1)}
-                    aria-label="Sumar 0,1"
-                    className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-                    style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={10}
-                step={0.1}
-                value={score}
-                onChange={(e) => handleScoreInput(e.target.value)}
-                className="w-full cursor-pointer"
-                style={{ accentColor: "var(--accent-teal)" }}
+              <CategoryScorePicker
+                scores={scores}
+                color="var(--accent-teal)"
+                onChange={setScores}
               />
 
               <textarea

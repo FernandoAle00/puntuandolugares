@@ -111,6 +111,10 @@ const CREATE_TABLES_SQL: string[] = [
     user_id text NOT NULL REFERENCES user(id) ON DELETE cascade,
     dish text DEFAULT '' NOT NULL,
     score real NOT NULL,
+    service_score real,
+    food_score real,
+    place_score real,
+    price_score real,
     note text DEFAULT '' NOT NULL,
     created_at integer NOT NULL,
     updated_at integer NOT NULL,
@@ -154,6 +158,26 @@ const COLUMN_MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
     table: "place_photo",
     column: "visit_id",
     ddl: "ALTER TABLE place_photo ADD COLUMN visit_id text REFERENCES place_visit(id) ON DELETE set null",
+  },
+  {
+    table: "visit_entry",
+    column: "service_score",
+    ddl: "ALTER TABLE visit_entry ADD COLUMN service_score real",
+  },
+  {
+    table: "visit_entry",
+    column: "food_score",
+    ddl: "ALTER TABLE visit_entry ADD COLUMN food_score real",
+  },
+  {
+    table: "visit_entry",
+    column: "place_score",
+    ddl: "ALTER TABLE visit_entry ADD COLUMN place_score real",
+  },
+  {
+    table: "visit_entry",
+    column: "price_score",
+    ddl: "ALTER TABLE visit_entry ADD COLUMN price_score real",
   },
 ];
 

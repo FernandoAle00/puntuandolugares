@@ -21,6 +21,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AddPlaceModal } from "@/components/add-place-modal";
+import { ScoreBreakdownGrid } from "@/components/category-score-picker";
 import { accentCssVar, PlaceSheet } from "@/components/place-sheet";
 import { SocialSheet } from "@/components/social-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -30,6 +31,7 @@ import {
   buildGoogleMapsUrl,
   computeAverage,
   computeGap,
+  computePlaceBreakdown,
   filterAndSortPlaces,
   formatScore,
   formatVisitDate,
@@ -717,6 +719,7 @@ export function PocketGuide({
             {visiblePlaces.map((place) => {
               const avg = computeAverage(place.ratings);
               const gap = computeGap(place.ratings);
+              const placeBreakdown = computePlaceBreakdown(place.ratings);
               const isHighlighted =
                 (isRepeatSection || effectiveMode === "pending") && pickedPlace?.id === place.id;
 
@@ -910,6 +913,8 @@ export function PocketGuide({
                       })}
                     </div>
                   )}
+
+                  {placeBreakdown && <ScoreBreakdownGrid scores={placeBreakdown} compact />}
 
                   {place.photos.length > 0 && (
                     <div className="flex items-center gap-2">

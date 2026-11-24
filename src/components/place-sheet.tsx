@@ -5,7 +5,6 @@ import {
   Camera,
   IceCreamCone,
   MapPin,
-  Minus,
   Pencil,
   Plus,
   Repeat,
@@ -15,10 +14,13 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { CategoryScorePicker, ScoreBreakdownGrid } from "@/components/category-score-picker";
 import type { AccentColor, MealType, ServiceType } from "@/db/schema";
 import {
   buildGoogleMapsUrl,
   computeAverage,
+  computePlaceBreakdown,
+  DEFAULT_SCORE_BREAKDOWN,
   formatScore,
   formatVisitDate,
   getTodayIsoDate,
@@ -31,9 +33,9 @@ import {
   type PlacePhotoEntry,
   type PlaceVisit,
   type PlaceWithRatings,
+  type ScoreBreakdown,
+  type VisitEntryItem,
 } from "@/lib/domain";
-
-const QUICK_SCORES = [5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10] as const;
 
 export function accentCssVar(accent: AccentColor): string {
   switch (accent) {
@@ -46,105 +48,6 @@ export function accentCssVar(accent: AccentColor): string {
     default:
       return "var(--accent-teal)";
   }
-}
-
-interface ScorePickerProps {
-  score: number;
-  color: string;
-  onChange: (next: number) => void;
-}
-
-function ScorePicker({ score, color, onChange }: ScorePickerProps) {
-  function stepScore(delta: number) {
-    onChange(Math.min(10, Math.max(1, Math.round((score + delta) * 10) / 10)));
-  }
-
-  function handleInput(raw: string) {
-    const parsed = parseFloat(raw.replace(",", "."));
-    if (!Number.isNaN(parsed)) {
-      onChange(Math.min(10, Math.max(1, Math.round(parsed * 10) / 10)));
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-bold" style={{ color }}>
-          Puntaje (1 a 10)
-        </span>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => stepScore(-0.1)}
-            aria-label="Restar 0,1"
-            className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-            style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-          >
-            <Minus className="h-3.5 w-3.5" />
-          </button>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            step={0.1}
-            inputMode="decimal"
-            aria-label="Puntaje numérico"
-            value={score}
-            onChange={(e) => handleInput(e.target.value)}
-            className="font-display tabular w-16 rounded-lg border-2 py-1 text-center text-[18px] font-bold"
-            style={{
-              borderColor: color,
-              backgroundColor: "var(--surface)",
-              color,
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => stepScore(0.1)}
-            aria-label="Sumar 0,1"
-            className="pressable inline-flex h-8 w-8 items-center justify-center rounded-lg border-2"
-            style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <input
-        type="range"
-        min={1}
-        max={10}
-        step={0.1}
-        value={score}
-        onChange={(e) => handleInput(e.target.value)}
-        aria-label="Selector deslizante de puntaje"
-        className="w-full cursor-pointer"
-        style={{ accentColor: color }}
-      />
-
-      <div className="tabular grid grid-cols-5 gap-1.5">
-        {QUICK_SCORES.map((val) => {
-          const selected = score === val;
-          return (
-            <button
-              key={val}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(val)}
-              className="pressable rounded-xl border-2 py-1.5 text-[12px] font-bold"
-              style={{
-                borderColor: selected ? color : "var(--border-soft)",
-                backgroundColor: selected ? color : "var(--surface)",
-                color: selected ? "var(--accent-on-solid)" : "var(--fg)",
-              }}
-            >
-              {formatScore(val)}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 interface PlaceSheetProps {
@@ -181,7 +84,9 @@ export function PlaceSheet({
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   const [newVisitDate, setNewVisitDate] = useState(() => getTodayIsoDate());
   const [newVisitDish, setNewVisitDish] = useState("");
-  const [newVisitScore, setNewVisitScore] = useState(8);
+  const [newVisitScores, setNewVisitScores] = useState<ScoreBreakdown>({
+    ...DEFAULT_SCORE_BREAKDOWN,
+  });
   const [newVisitNote, setNewVisitNote] = useState("");
 
   // Per-visit entry editor state (supports editing any member of the group)
@@ -192,7 +97,10 @@ export function PlaceSheet({
     userAccent: AccentColor;
   } | null>(null);
   const [entryDish, setEntryDish] = useState("");
-  const [entryScore, setEntryScore] = useState(8);
+  const [entryScores, setEntryScores] = useState<ScoreBreakdown>({
+    ...DEFAULT_SCORE_BREAKDOWN,
+  });
+  const [entryLegacyHint, setEntryLegacyHint] = useState<number | null>(null);
   const [entryNote, setEntryNote] = useState("");
 
   // Per-visit date editor & delete confirmation
@@ -222,9 +130,10 @@ export function PlaceSheet({
     setNewVisitOpen(place.visits.length === 0);
     setNewVisitDate(getTodayIsoDate());
     setNewVisitDish("");
-    setNewVisitScore(8);
+    setNewVisitScores({ ...DEFAULT_SCORE_BREAKDOWN });
     setNewVisitNote("");
     setEditingTarget(null);
+    setEntryLegacyHint(null);
     setEditingDateVisitId(null);
     setConfirmDeleteVisitId(null);
     setPhotoCaptions({});
@@ -364,7 +273,10 @@ export function PlaceSheet({
       userAccent: target.userAccent,
     });
     setEntryDish(existing?.dish ?? "");
-    setEntryScore(existing?.score ?? 8);
+    setEntryScores(
+      existing?.scores ? { ...existing.scores } : { ...DEFAULT_SCORE_BREAKDOWN },
+    );
+    setEntryLegacyHint(existing && !existing.scores ? existing.legacyScore : null);
     setEntryNote(existing?.note ?? "");
     setError(null);
   }
@@ -380,7 +292,7 @@ export function PlaceSheet({
         body: JSON.stringify({
           visitedAt: newVisitDate,
           dish: newVisitDish,
-          score: newVisitScore,
+          scores: newVisitScores,
           note: newVisitNote,
         }),
       });
@@ -398,7 +310,7 @@ export function PlaceSheet({
       setNewVisitOpen(false);
       setNewVisitDate(getTodayIsoDate());
       setNewVisitDish("");
-      setNewVisitScore(8);
+      setNewVisitScores({ ...DEFAULT_SCORE_BREAKDOWN });
       setNewVisitNote("");
       setBusy(false);
     } catch {
@@ -418,7 +330,7 @@ export function PlaceSheet({
         body: JSON.stringify({
           userId: editingTarget.userId,
           dish: entryDish,
-          score: entryScore,
+          scores: entryScores,
           note: entryNote,
         }),
       });
@@ -434,6 +346,7 @@ export function PlaceSheet({
       }
       onUpdated(data.place);
       setEditingTarget(null);
+      setEntryLegacyHint(null);
       setBusy(false);
     } catch {
       setError("Error de conexión");
@@ -998,39 +911,52 @@ export function PlaceSheet({
           </div>
         )}
 
-        {/* Overall derived averages per person */}
-        {place.ratings.length > 0 && (
-          <div
-            className="mb-4 flex flex-col gap-2 rounded-2xl p-3.5"
-            style={{ backgroundColor: "var(--surface-soft)" }}
-          >
-            {place.ratings.map((r) => {
-              const color = accentCssVar(r.userAccent);
-              return (
-                <div
-                  key={r.userId}
-                  className="tabular grid grid-cols-[64px_1fr_42px] items-center gap-2 text-[13px] font-bold"
-                >
-                  <span className="truncate" style={{ color }}>
-                    {r.userName}
-                  </span>
-                  <div
-                    className="h-2 overflow-hidden rounded-full"
-                    style={{ backgroundColor: "var(--surface)" }}
-                  >
+        {/* Overall derived averages per person + 4-category breakdown */}
+        {place.ratings.length > 0 && (() => {
+          const placeBreakdown = computePlaceBreakdown(place.ratings);
+          return (
+            <div
+              className="mb-4 flex flex-col gap-3 rounded-2xl p-3.5"
+              style={{ backgroundColor: "var(--surface-soft)" }}
+            >
+              <div className="flex flex-col gap-2">
+                {place.ratings.map((r) => {
+                  const color = accentCssVar(r.userAccent);
+                  return (
                     <div
-                      className="h-full rounded-full"
-                      style={{ width: `${r.score * 10}%`, backgroundColor: color }}
-                    />
-                  </div>
-                  <span className="text-right" style={{ color }}>
-                    {formatScore(r.score)}
-                  </span>
+                      key={r.userId}
+                      className="tabular grid grid-cols-[64px_1fr_42px] items-center gap-2 text-[13px] font-bold"
+                    >
+                      <span className="truncate" style={{ color }}>
+                        {r.userName}
+                      </span>
+                      <div
+                        className="h-2 overflow-hidden rounded-full"
+                        style={{ backgroundColor: "var(--surface)" }}
+                      >
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${r.score * 10}%`, backgroundColor: color }}
+                        />
+                      </div>
+                      <span className="text-right" style={{ color }}>
+                        {formatScore(r.score)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {placeBreakdown && (
+                <div
+                  className="rounded-xl p-2"
+                  style={{ backgroundColor: "var(--surface)" }}
+                >
+                  <ScoreBreakdownGrid scores={placeBreakdown} compact />
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         {error && (
           <p
@@ -1101,7 +1027,11 @@ export function PlaceSheet({
               </div>
             </div>
 
-            <ScorePicker score={newVisitScore} color={myColor} onChange={setNewVisitScore} />
+            <CategoryScorePicker
+              scores={newVisitScores}
+              color={myColor}
+              onChange={setNewVisitScores}
+            />
 
             <textarea
               rows={2}
@@ -1146,7 +1076,10 @@ export function PlaceSheet({
             {place.visits.map((visit, idx) => {
               const visitNumber = place.visits.length - idx;
               const dateLabel = formatVisitDate(visit.visitedAt);
-              const visitAvg = computeAverage(visit.entries);
+              const scoredEntries = visit.entries.filter(
+                (e): e is VisitEntryItem & { score: number } => e.score !== null,
+              );
+              const visitAvg = computeAverage(scoredEntries);
               const entryUserIds = new Set(visit.entries.map((e) => e.userId));
               const availableMembers =
                 groupMembers.length > 0
@@ -1203,7 +1136,7 @@ export function PlaceSheet({
                         <Calendar className="h-3 w-3" />
                         <span>{dateLabel || "Agregar fecha"}</span>
                       </button>
-                      {visitAvg !== null && visit.entries.length > 1 && (
+                      {visitAvg !== null && scoredEntries.length > 1 && (
                         <span
                           className="tabular rounded-lg px-2 py-0.5 text-[12px] font-bold"
                           style={{
@@ -1271,7 +1204,7 @@ export function PlaceSheet({
                         return (
                           <div
                             key={entry.id}
-                            className="flex flex-col gap-0.5 rounded-xl px-3 py-2"
+                            className="flex flex-col gap-1.5 rounded-xl px-3 py-2.5"
                             style={{
                               backgroundColor: "var(--surface)",
                               outline: isBeingEdited ? `2px solid ${color}` : undefined,
@@ -1280,30 +1213,66 @@ export function PlaceSheet({
                             <div className="flex items-center justify-between gap-2 text-[13px] font-bold">
                               <span style={{ color }}>{entry.userName}</span>
                               <div className="flex items-center gap-2">
-                                <span className="tabular" style={{ color }}>
-                                  {formatScore(entry.score)} / 10
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    startEditingEntry(visit, {
-                                      userId: entry.userId,
-                                      userName: entry.userName,
-                                      userAccent: entry.userAccent,
-                                    })
-                                  }
-                                  aria-label={`Editar comida de ${entry.userName}`}
-                                  title={`Editar comida de ${entry.userName}`}
-                                  className="pressable inline-flex h-6 w-6 items-center justify-center rounded-md"
-                                  style={{
-                                    backgroundColor: "var(--pill-bg)",
-                                    color: "var(--fg-muted)",
-                                  }}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
+                                {entry.score !== null ? (
+                                  <>
+                                    <span className="tabular" style={{ color }}>
+                                      {formatScore(entry.score)} / 10
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        startEditingEntry(visit, {
+                                          userId: entry.userId,
+                                          userName: entry.userName,
+                                          userAccent: entry.userAccent,
+                                        })
+                                      }
+                                      aria-label={`Editar comida de ${entry.userName}`}
+                                      title={`Editar comida de ${entry.userName}`}
+                                      className="pressable inline-flex h-6 w-6 items-center justify-center rounded-md"
+                                      style={{
+                                        backgroundColor: "var(--pill-bg)",
+                                        color: "var(--fg-muted)",
+                                      }}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {entry.legacyScore !== null && (
+                                      <span
+                                        className="tabular text-[11px] font-semibold"
+                                        style={{ color: "var(--fg-muted)" }}
+                                      >
+                                        Antes: {formatScore(entry.legacyScore)}
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        startEditingEntry(visit, {
+                                          userId: entry.userId,
+                                          userName: entry.userName,
+                                          userAccent: entry.userAccent,
+                                        })
+                                      }
+                                      className="pressable rounded-full border-2 px-2.5 py-0.5 text-[11.5px] font-bold"
+                                      style={{
+                                        borderColor: color,
+                                        color,
+                                        backgroundColor: "var(--bg)",
+                                      }}
+                                    >
+                                      Puntuar
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
+
+                            {entry.scores && <ScoreBreakdownGrid scores={entry.scores} compact />}
+
                             {entry.dish && (
                               <div className="text-[13px] font-semibold">{entry.dish}</div>
                             )}
@@ -1347,10 +1316,11 @@ export function PlaceSheet({
                         />
                       </div>
 
-                      <ScorePicker
-                        score={entryScore}
+                      <CategoryScorePicker
+                        scores={entryScores}
                         color={editingColor}
-                        onChange={setEntryScore}
+                        legacyHint={entryLegacyHint}
+                        onChange={setEntryScores}
                       />
 
                       <textarea
@@ -1376,7 +1346,10 @@ export function PlaceSheet({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => setEditingTarget(null)}
+                          onClick={() => {
+                            setEditingTarget(null);
+                            setEntryLegacyHint(null);
+                          }}
                           className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
                           style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
                         >

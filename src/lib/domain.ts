@@ -42,6 +42,30 @@ export const ACCENTS: readonly AccentColor[] = [
   "berry",
 ] as const;
 
+export const SCORE_CATEGORIES = ["service", "food", "place", "price"] as const;
+export type ScoreCategory = (typeof SCORE_CATEGORIES)[number];
+
+export const SCORE_CATEGORY_LABELS: Record<ScoreCategory, string> = {
+  service: "Atención",
+  food: "Comida",
+  place: "Lugar",
+  price: "Precio",
+};
+
+export interface ScoreBreakdown {
+  service: number;
+  food: number;
+  place: number;
+  price: number;
+}
+
+export const DEFAULT_SCORE_BREAKDOWN: ScoreBreakdown = {
+  service: 8,
+  food: 8,
+  place: 8,
+  price: 8,
+};
+
 export const mealSchema = z.enum(["desayuno", "almuerzo", "merienda", "cena", "postre"]);
 export const serviceTypeSchema = z.enum(["dine_in", "delivery", "ice_cream"]);
 
@@ -52,6 +76,13 @@ export const scoreSchema = z
   .refine((v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9, {
     message: "Usá pasos de 0,1 (por ejemplo 7,5 u 8,3)",
   });
+
+export const scoreBreakdownSchema = z.object({
+  service: scoreSchema,
+  food: scoreSchema,
+  place: scoreSchema,
+  price: scoreSchema,
+});
 
 export const visitDateSchema = z
   .string()
@@ -77,7 +108,7 @@ export const createPlaceSchema = z.object({
   initialRating: z
     .object({
       dish: z.string().trim().max(240, "Texto de comida demasiado largo").default(""),
-      score: scoreSchema,
+      scores: scoreBreakdownSchema,
       note: z.string().trim().max(600, "La reseña es demasiado larga").default(""),
       visitedAt: visitDateSchema.optional(),
     })
@@ -104,14 +135,14 @@ export const updatePlaceSchema = z.object({
 });
 
 export const upsertRatingSchema = z.object({
-  score: scoreSchema,
-  note: z.string().trim().max(600, "La reseña es demasiado larga").default(""),
+  scores: scoreBreakdownSchema,
+  note: z.string().trim().max(600, "La reseña es demasiado larga").optional(),
 });
 
 export const createVisitSchema = z.object({
   visitedAt: visitDateSchema.default(""),
   dish: z.string().trim().max(240, "Texto de comida demasiado largo").default(""),
-  score: scoreSchema,
+  scores: scoreBreakdownSchema,
   note: z.string().trim().max(600, "La reseña es demasiado larga").default(""),
 });
 
@@ -121,9 +152,9 @@ export const updateVisitSchema = z.object({
 
 export const upsertVisitEntrySchema = z.object({
   userId: z.string().min(1).optional(),
-  dish: z.string().trim().max(240, "Texto de comida demasiado largo").default(""),
-  score: scoreSchema,
-  note: z.string().trim().max(600, "La reseña es demasiado larga").default(""),
+  dish: z.string().trim().max(240, "Texto de comida demasiado largo").optional(),
+  scores: scoreBreakdownSchema,
+  note: z.string().trim().max(600, "La reseña es demasiado larga").optional(),
 });
 
 export const friendRequestSchema = z.object({
@@ -190,6 +221,7 @@ export interface RatingEntry {
   userName: string;
   userAccent: AccentColor;
   score: number;
+  scores: ScoreBreakdown;
   note: string;
   updatedAt: string;
 }
@@ -209,7 +241,9 @@ export interface VisitEntryItem {
   userName: string;
   userAccent: AccentColor;
   dish: string;
-  score: number;
+  score: number | null;
+  scores: ScoreBreakdown | null;
+  legacyScore: number | null;
   note: string;
   updatedAt: string;
 }
@@ -239,8 +273,54 @@ export interface PlaceWithRatings {
 
 export type ViewMode = "ranking" | "pending" | "gap";
 
+function roundOneDecimal(value: number): number {
+  return Math.round((value + 1e-12) * 10) / 10;
+}
+
 /**
- * Derives each user's overall rating for a place by averaging their scores across visits.
+ * Computes the exact arithmetic mean across the 4 evaluation categories (Atención, Comida, Lugar, Precio).
+ * Sums in integer tenths to avoid IEEE-754 drift on boundary values like (1 + 1 + 1.1 + 8.7) / 4 = 2.95.
+ */
+export function computeBreakdownAverage(scores: ScoreBreakdown): number {
+  const totalTenths =
+    Math.round(scores.service * 10) +
+    Math.round(scores.food * 10) +
+    Math.round(scores.place * 10) +
+    Math.round(scores.price * 10);
+  return totalTenths / 40;
+}
+
+/**
+ * Computes the group-wide average breakdown across all scored members for a place.
+ */
+export function computePlaceBreakdown(
+  ratings: readonly Pick<RatingEntry, "scores">[],
+): ScoreBreakdown | null {
+  if (ratings.length === 0) return null;
+  let service = 0;
+  let food = 0;
+  let place = 0;
+  let price = 0;
+  for (const r of ratings) {
+    service += r.scores.service;
+    food += r.scores.food;
+    place += r.scores.place;
+    price += r.scores.price;
+  }
+  const n = ratings.length;
+  return {
+    service: roundOneDecimal(service / n),
+    food: roundOneDecimal(food / n),
+    place: roundOneDecimal(place / n),
+    price: roundOneDecimal(price / n),
+  };
+}
+
+/**
+ * Derives each user's overall rating for a place by averaging their 4-category scores across visits.
+ * Preserves full floating-point precision so downstream place-level averages only round once at display.
+ * Legacy visit entries without 4-category scores are preserved for their dish/review text but excluded
+ * from the derived score until re-rated.
  */
 export function deriveRatingsFromVisits(visits: readonly PlaceVisit[]): RatingEntry[] {
   const byUser = new Map<
@@ -249,7 +329,11 @@ export function deriveRatingsFromVisits(visits: readonly PlaceVisit[]): RatingEn
       userId: string;
       userName: string;
       userAccent: AccentColor;
-      total: number;
+      totalScore: number;
+      serviceTotal: number;
+      foodTotal: number;
+      placeTotal: number;
+      priceTotal: number;
       count: number;
       latestNote: string;
       latestUpdatedAt: string;
@@ -259,20 +343,30 @@ export function deriveRatingsFromVisits(visits: readonly PlaceVisit[]): RatingEn
 
   for (const visit of visits) {
     for (const entry of visit.entries) {
+      if (!entry.scores) continue;
+      const entryRawMean = computeBreakdownAverage(entry.scores);
       const existing = byUser.get(entry.userId);
       if (!existing) {
         byUser.set(entry.userId, {
           userId: entry.userId,
           userName: entry.userName,
           userAccent: entry.userAccent,
-          total: entry.score,
+          totalScore: entryRawMean,
+          serviceTotal: entry.scores.service,
+          foodTotal: entry.scores.food,
+          placeTotal: entry.scores.place,
+          priceTotal: entry.scores.price,
           count: 1,
           latestNote: entry.note.trim(),
           latestUpdatedAt: entry.updatedAt,
           latestEntryId: entry.id,
         });
       } else {
-        existing.total += entry.score;
+        existing.totalScore += entryRawMean;
+        existing.serviceTotal += entry.scores.service;
+        existing.foodTotal += entry.scores.food;
+        existing.placeTotal += entry.scores.place;
+        existing.priceTotal += entry.scores.price;
         existing.count += 1;
         if (entry.updatedAt >= existing.latestUpdatedAt) {
           existing.latestUpdatedAt = entry.updatedAt;
@@ -293,7 +387,13 @@ export function deriveRatingsFromVisits(visits: readonly PlaceVisit[]): RatingEn
       userId: agg.userId,
       userName: agg.userName,
       userAccent: agg.userAccent,
-      score: Math.round((agg.total / agg.count) * 10) / 10,
+      score: agg.totalScore / agg.count,
+      scores: {
+        service: agg.serviceTotal / agg.count,
+        food: agg.foodTotal / agg.count,
+        place: agg.placeTotal / agg.count,
+        price: agg.priceTotal / agg.count,
+      },
       note: agg.latestNote,
       updatedAt: agg.latestUpdatedAt,
     }))
@@ -347,7 +447,7 @@ export function getTodayIsoDate(): string {
 export function computeAverage(ratings: readonly Pick<RatingEntry, "score">[]): number | null {
   if (ratings.length === 0) return null;
   const total = ratings.reduce((sum, r) => sum + r.score, 0);
-  return Math.round((total / ratings.length) * 10) / 10;
+  return roundOneDecimal(total / ratings.length);
 }
 
 /**
@@ -361,7 +461,7 @@ export function computeGap(ratings: readonly Pick<RatingEntry, "score">[]): numb
     if (r.score < min) min = r.score;
     if (r.score > max) max = r.score;
   }
-  return Math.round((max - min) * 10) / 10;
+  return roundOneDecimal(max - min);
 }
 
 export function isPendingPlace(place: Pick<PlaceWithRatings, "ratings">): boolean {
@@ -370,7 +470,7 @@ export function isPendingPlace(place: Pick<PlaceWithRatings, "ratings">): boolea
 
 export function formatScore(score: number | null | undefined): string {
   if (score === null || score === undefined) return "Sin nota";
-  const rounded = Math.round(score * 10) / 10;
+  const rounded = roundOneDecimal(score);
   return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
 }
 

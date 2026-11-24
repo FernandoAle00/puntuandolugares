@@ -11,6 +11,7 @@ import {
   visitEntry,
 } from "@/db/schema";
 import {
+  computeBreakdownAverage,
   deriveRatingsFromVisits,
   getTodayIsoDate,
   type CreatePlaceInput,
@@ -18,7 +19,7 @@ import {
   type PlacePhotoEntry,
   type PlaceVisit,
   type PlaceWithRatings,
-  type RatingEntry,
+  type ScoreBreakdown,
   type UpdatePlaceInput,
   type UpdateVisitInput,
   type UpsertRatingInput,
@@ -26,6 +27,28 @@ import {
   type VisitEntryItem,
 } from "@/lib/domain";
 import { removePhotoFile } from "@/lib/photos";
+
+function extractScoreBreakdown(row: {
+  serviceScore: number | null;
+  foodScore: number | null;
+  placeScore: number | null;
+  priceScore: number | null;
+}): ScoreBreakdown | null {
+  if (
+    row.serviceScore === null ||
+    row.foodScore === null ||
+    row.placeScore === null ||
+    row.priceScore === null
+  ) {
+    return null;
+  }
+  return {
+    service: row.serviceScore,
+    food: row.foodScore,
+    place: row.placeScore,
+    price: row.priceScore,
+  };
+}
 
 export async function isUserInGroup(userId: string, groupId: string): Promise<boolean> {
   const [row] = await db
@@ -78,26 +101,12 @@ export async function listPlacesForUser(
   if (places.length === 0) return [];
 
   const placeIds = places.map((p) => p.id);
-  const [visitRows, legacyRatingRows, photoRows] = await Promise.all([
+  const [visitRows, photoRows] = await Promise.all([
     db
       .select()
       .from(placeVisit)
       .where(inArray(placeVisit.placeId, placeIds))
       .orderBy(desc(placeVisit.visitedAt), desc(placeVisit.createdAt)),
-    db
-      .select({
-        id: rating.id,
-        placeId: rating.placeId,
-        userId: rating.userId,
-        score: rating.score,
-        note: rating.note,
-        updatedAt: rating.updatedAt,
-        userName: user.name,
-        userAccent: user.accentColor,
-      })
-      .from(rating)
-      .innerJoin(user, eq(rating.userId, user.id))
-      .where(inArray(rating.placeId, placeIds)),
     db
       .select({
         id: placePhoto.id,
@@ -123,6 +132,10 @@ export async function listPlacesForUser(
             userId: visitEntry.userId,
             dish: visitEntry.dish,
             score: visitEntry.score,
+            serviceScore: visitEntry.serviceScore,
+            foodScore: visitEntry.foodScore,
+            placeScore: visitEntry.placeScore,
+            priceScore: visitEntry.priceScore,
             note: visitEntry.note,
             updatedAt: visitEntry.updatedAt,
             userName: user.name,
@@ -135,13 +148,16 @@ export async function listPlacesForUser(
 
   const entriesByVisit = new Map<string, VisitEntryItem[]>();
   for (const row of entryRows) {
+    const scores = extractScoreBreakdown(row);
     const item: VisitEntryItem = {
       id: row.id,
       userId: row.userId,
       userName: row.userName,
       userAccent: row.userAccent,
       dish: row.dish,
-      score: row.score,
+      score: scores ? computeBreakdownAverage(scores) : null,
+      scores,
+      legacyScore: scores ? null : row.score,
       note: row.note,
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -188,31 +204,9 @@ export async function listPlacesForUser(
     else visitsByPlace.set(row.placeId, [visit]);
   }
 
-  const legacyRatingsByPlace = new Map<string, RatingEntry[]>();
-  for (const row of legacyRatingRows) {
-    const entry: RatingEntry = {
-      id: row.id,
-      userId: row.userId,
-      userName: row.userName,
-      userAccent: row.userAccent,
-      score: row.score,
-      note: row.note,
-      updatedAt: row.updatedAt.toISOString(),
-    };
-    const bucket = legacyRatingsByPlace.get(row.placeId);
-    if (bucket) bucket.push(entry);
-    else legacyRatingsByPlace.set(row.placeId, [entry]);
-  }
-
   return places.map((p) => {
     const visits = (visitsByPlace.get(p.id) ?? []).sort(sortVisitsNewestFirst);
-    const derived = deriveRatingsFromVisits(visits);
-    const ratings =
-      visits.length > 0
-        ? derived
-        : (legacyRatingsByPlace.get(p.id) ?? []).sort((a, b) =>
-            a.userName.localeCompare(b.userName, "es"),
-          );
+    const ratings = deriveRatingsFromVisits(visits);
 
     return {
       id: p.id,
@@ -235,25 +229,12 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
   const [found] = await db.select().from(place).where(eq(place.id, placeId)).limit(1);
   if (!found) return null;
 
-  const [visitRows, legacyRatingRows, photoRows] = await Promise.all([
+  const [visitRows, photoRows] = await Promise.all([
     db
       .select()
       .from(placeVisit)
       .where(eq(placeVisit.placeId, placeId))
       .orderBy(desc(placeVisit.visitedAt), desc(placeVisit.createdAt)),
-    db
-      .select({
-        id: rating.id,
-        userId: rating.userId,
-        score: rating.score,
-        note: rating.note,
-        updatedAt: rating.updatedAt,
-        userName: user.name,
-        userAccent: user.accentColor,
-      })
-      .from(rating)
-      .innerJoin(user, eq(rating.userId, user.id))
-      .where(eq(rating.placeId, placeId)),
     db
       .select({
         id: placePhoto.id,
@@ -278,6 +259,10 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
             userId: visitEntry.userId,
             dish: visitEntry.dish,
             score: visitEntry.score,
+            serviceScore: visitEntry.serviceScore,
+            foodScore: visitEntry.foodScore,
+            placeScore: visitEntry.placeScore,
+            priceScore: visitEntry.priceScore,
             note: visitEntry.note,
             updatedAt: visitEntry.updatedAt,
             userName: user.name,
@@ -290,13 +275,16 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
 
   const entriesByVisit = new Map<string, VisitEntryItem[]>();
   for (const row of entryRows) {
+    const scores = extractScoreBreakdown(row);
     const item: VisitEntryItem = {
       id: row.id,
       userId: row.userId,
       userName: row.userName,
       userAccent: row.userAccent,
       dish: row.dish,
-      score: row.score,
+      score: scores ? computeBreakdownAverage(scores) : null,
+      scores,
+      legacyScore: scores ? null : row.score,
       note: row.note,
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -334,20 +322,7 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
     }))
     .sort(sortVisitsNewestFirst);
 
-  const ratings =
-    visits.length > 0
-      ? deriveRatingsFromVisits(visits)
-      : legacyRatingRows
-          .map((r) => ({
-            id: r.id,
-            userId: r.userId,
-            userName: r.userName,
-            userAccent: r.userAccent,
-            score: r.score,
-            note: r.note,
-            updatedAt: r.updatedAt.toISOString(),
-          }))
-          .sort((a, b) => a.userName.localeCompare(b.userName, "es"));
+  const ratings = deriveRatingsFromVisits(visits);
 
   return {
     id: found.id,
@@ -404,7 +379,11 @@ export async function createPlaceRecord(
         visitId,
         userId,
         dish: input.initialRating.dish,
-        score: input.initialRating.score,
+        score: computeBreakdownAverage(input.initialRating.scores),
+        serviceScore: input.initialRating.scores.service,
+        foodScore: input.initialRating.scores.food,
+        placeScore: input.initialRating.scores.place,
+        priceScore: input.initialRating.scores.price,
         note: input.initialRating.note,
         createdAt: now,
         updatedAt: now,
@@ -519,7 +498,11 @@ export async function createPlaceVisit(
       visitId,
       userId,
       dish: input.dish,
-      score: input.score,
+      score: computeBreakdownAverage(input.scores),
+      serviceScore: input.scores.service,
+      foodScore: input.scores.food,
+      placeScore: input.scores.place,
+      priceScore: input.scores.price,
       note: input.note,
       createdAt: now,
       updatedAt: now,
@@ -627,13 +610,19 @@ export async function upsertVisitEntry(
     .where(and(eq(visitEntry.visitId, visitId), eq(visitEntry.userId, targetUserId)))
     .limit(1);
 
+  const computedScore = computeBreakdownAverage(input.scores);
+
   if (existing) {
     await db
       .update(visitEntry)
       .set({
-        dish: input.dish,
-        score: input.score,
-        note: input.note,
+        ...(input.dish !== undefined ? { dish: input.dish } : {}),
+        score: computedScore,
+        serviceScore: input.scores.service,
+        foodScore: input.scores.food,
+        placeScore: input.scores.place,
+        priceScore: input.scores.price,
+        ...(input.note !== undefined ? { note: input.note } : {}),
         updatedAt: now,
       })
       .where(eq(visitEntry.id, existing.id));
@@ -642,9 +631,13 @@ export async function upsertVisitEntry(
       id: crypto.randomUUID(),
       visitId,
       userId: targetUserId,
-      dish: input.dish,
-      score: input.score,
-      note: input.note,
+      dish: input.dish ?? "",
+      score: computedScore,
+      serviceScore: input.scores.service,
+      foodScore: input.scores.food,
+      placeScore: input.scores.place,
+      priceScore: input.scores.price,
+      note: input.note ?? "",
       createdAt: now,
       updatedAt: now,
     });
@@ -730,17 +723,16 @@ export async function upsertUserRating(
 
   if (latestVisit) {
     return upsertVisitEntry(placeId, latestVisit.id, userId, {
-      dish: "",
-      score: input.score,
-      note: input.note,
+      scores: input.scores,
+      ...(input.note !== undefined ? { note: input.note } : {}),
     });
   }
 
   const created = await createPlaceVisit(placeId, userId, {
     visitedAt: getTodayIsoDate(),
     dish: "",
-    score: input.score,
-    note: input.note,
+    scores: input.scores,
+    note: input.note ?? "",
   });
   return created.status === "ok" ? { status: "ok", place: created.place } : created;
 }

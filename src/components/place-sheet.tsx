@@ -951,7 +951,11 @@ export function PlaceSheet({
                   className="rounded-xl p-2"
                   style={{ backgroundColor: "var(--surface)" }}
                 >
-                  <ScoreBreakdownGrid scores={placeBreakdown} compact />
+                  <ScoreBreakdownGrid
+                    scores={placeBreakdown}
+                    serviceType={place.serviceType}
+                    compact
+                  />
                 </div>
               )}
             </div>
@@ -1030,6 +1034,7 @@ export function PlaceSheet({
             <CategoryScorePicker
               scores={newVisitScores}
               color={myColor}
+              serviceType={place.serviceType}
               onChange={setNewVisitScores}
             />
 
@@ -1271,7 +1276,13 @@ export function PlaceSheet({
                               </div>
                             </div>
 
-                            {entry.scores && <ScoreBreakdownGrid scores={entry.scores} compact />}
+                            {entry.scores && (
+                              <ScoreBreakdownGrid
+                                scores={entry.scores}
+                                serviceType={place.serviceType}
+                                compact
+                              />
+                            )}
 
                             {entry.dish && (
                               <div className="text-[13px] font-semibold">{entry.dish}</div>
@@ -1319,6 +1330,7 @@ export function PlaceSheet({
                       <CategoryScorePicker
                         scores={entryScores}
                         color={editingColor}
+                        serviceType={place.serviceType}
                         legacyHint={entryLegacyHint}
                         onChange={setEntryScores}
                       />

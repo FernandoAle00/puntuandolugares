@@ -12,6 +12,8 @@ import {
   formatScore,
   formatVisitDate,
   friendRequestSchema,
+  getScoreCategories,
+  getScoreCategoryLabel,
   pickRandomPending,
   scoreSchema,
   updatePlaceSchema,
@@ -370,6 +372,19 @@ describe("rating calculations, visits, and filtering", () => {
     expect(computeGap([{ score: 8 }])).toBeNull();
     expect(formatScore(6.5)).toBe("6,5");
     expect(formatScore(9)).toBe("9");
+    expect(getScoreCategories("dine_in")).toEqual(["service", "food", "place", "price"]);
+    expect(getScoreCategories("delivery")).toEqual(["food", "price", "service", "place"]);
+    expect(
+      getScoreCategories("delivery").map((c) => getScoreCategoryLabel(c, "delivery")),
+    ).toEqual(["Comida", "Precio", "Tiempo de envío", "Llegada"]);
+    expect(
+      getScoreCategories("delivery").map((c) =>
+        getScoreCategoryLabel(c, "delivery", { compact: true }),
+      ),
+    ).toEqual(["Comida", "Precio", "Envío", "Llegada"]);
+    expect(
+      getScoreCategories("ice_cream").map((c) => getScoreCategoryLabel(c, "ice_cream")),
+    ).toEqual(["Atención", "Comida", "Lugar", "Precio"]);
   });
 
   it("derives each user's average score and 4-category breakdown across visits while ignoring legacy unscored entries", () => {

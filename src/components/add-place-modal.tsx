@@ -351,6 +351,7 @@ export function AddPlaceModal({
               <CategoryScorePicker
                 scores={scores}
                 color="var(--accent-teal)"
+                serviceType={serviceType}
                 onChange={setScores}
               />
 

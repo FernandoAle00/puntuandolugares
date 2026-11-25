@@ -914,7 +914,13 @@ export function PocketGuide({
                     </div>
                   )}
 
-                  {placeBreakdown && <ScoreBreakdownGrid scores={placeBreakdown} compact />}
+                  {placeBreakdown && (
+                    <ScoreBreakdownGrid
+                      scores={placeBreakdown}
+                      serviceType={place.serviceType}
+                      compact
+                    />
+                  )}
 
                   {place.photos.length > 0 && (
                     <div className="flex items-center gap-2">

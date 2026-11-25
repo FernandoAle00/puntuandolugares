@@ -1,11 +1,12 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
+import type { ServiceType } from "@/db/schema";
 import {
   computeBreakdownAverage,
   formatScore,
-  SCORE_CATEGORIES,
-  SCORE_CATEGORY_LABELS,
+  getScoreCategories,
+  getScoreCategoryLabel,
   type ScoreBreakdown,
   type ScoreCategory,
 } from "@/lib/domain";
@@ -13,6 +14,7 @@ import {
 interface CategoryScorePickerProps {
   scores: ScoreBreakdown;
   color: string;
+  serviceType?: ServiceType;
   legacyHint?: number | null;
   onChange: (next: ScoreBreakdown) => void;
 }
@@ -22,15 +24,17 @@ function clampScore(value: number): number {
 }
 
 /**
- * Compact 4-category rating picker (Atención, Comida, Lugar, Precio) with live computed average.
+ * Compact 4-category rating picker with live computed average, adapting labels for delivery vs dine-in.
  */
 export function CategoryScorePicker({
   scores,
   color,
+  serviceType = "dine_in",
   legacyHint,
   onChange,
 }: CategoryScorePickerProps) {
   const average = computeBreakdownAverage(scores);
+  const categories = getScoreCategories(serviceType);
 
   function setCategory(category: ScoreCategory, value: number) {
     onChange({ ...scores, [category]: clampScore(value) });
@@ -65,9 +69,13 @@ export function CategoryScorePicker({
       </div>
 
       <div className="flex flex-col gap-2">
-        {SCORE_CATEGORIES.map((category) => {
+        {categories.map((category) => {
           const val = scores[category];
-          const label = SCORE_CATEGORY_LABELS[category];
+          const label = getScoreCategoryLabel(category, serviceType);
+          const hint =
+            serviceType === "delivery" && category === "place"
+              ? "Temperatura, armado y packaging"
+              : undefined;
           return (
             <div
               key={category}
@@ -78,8 +86,20 @@ export function CategoryScorePicker({
               }}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[12.5px] font-bold">{label}</span>
-                <div className="flex items-center gap-1">
+                <div className="min-w-0">
+                  <span className="text-[12.5px] font-bold" title={hint}>
+                    {label}
+                  </span>
+                  {hint && (
+                    <span
+                      className="block text-[10.5px] leading-tight"
+                      style={{ color: "var(--fg-muted)" }}
+                    >
+                      {hint}
+                    </span>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setCategory(category, val - 0.1)}
@@ -143,18 +163,21 @@ export function CategoryScorePicker({
 }
 
 /**
- * Compact 4-column breakdown strip displaying Atención, Comida, Lugar, and Precio.
+ * Compact 4-column breakdown strip adapting labels for delivery vs dine-in places.
  */
 export function ScoreBreakdownGrid({
   scores,
+  serviceType = "dine_in",
   compact = false,
 }: {
   scores: ScoreBreakdown;
+  serviceType?: ServiceType;
   compact?: boolean;
 }) {
+  const categories = getScoreCategories(serviceType);
   return (
     <div className="tabular grid grid-cols-4 gap-1.5">
-      {SCORE_CATEGORIES.map((category) => (
+      {categories.map((category) => (
         <div
           key={category}
           className={`flex flex-col rounded-lg px-2 ${compact ? "py-1" : "py-1.5"}`}
@@ -164,7 +187,7 @@ export function ScoreBreakdownGrid({
             className="truncate text-[10.5px] leading-tight font-semibold"
             style={{ color: "var(--fg-muted)" }}
           >
-            {SCORE_CATEGORY_LABELS[category]}
+            {getScoreCategoryLabel(category, serviceType, { compact: true })}
           </span>
           <span className="font-display text-[13px] leading-tight font-bold">
             {formatScore(scores[category])}

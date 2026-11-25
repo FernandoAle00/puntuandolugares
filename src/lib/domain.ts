@@ -45,12 +45,56 @@ export const ACCENTS: readonly AccentColor[] = [
 export const SCORE_CATEGORIES = ["service", "food", "place", "price"] as const;
 export type ScoreCategory = (typeof SCORE_CATEGORIES)[number];
 
+/**
+ * Display order for delivery places: Comida, Precio, Tiempo de envío (stored in `service`), Llegada (stored in `place`).
+ */
+export const DELIVERY_SCORE_CATEGORIES = ["food", "price", "service", "place"] as const;
+
 export const SCORE_CATEGORY_LABELS: Record<ScoreCategory, string> = {
   service: "Atención",
   food: "Comida",
   place: "Lugar",
   price: "Precio",
 };
+
+const DELIVERY_SCORE_CATEGORY_LABELS: Record<ScoreCategory, string> = {
+  food: "Comida",
+  price: "Precio",
+  service: "Tiempo de envío",
+  place: "Llegada",
+};
+
+const DELIVERY_SCORE_CATEGORY_COMPACT_LABELS: Record<ScoreCategory, string> = {
+  food: "Comida",
+  price: "Precio",
+  service: "Envío",
+  place: "Llegada",
+};
+
+/**
+ * Returns the ordered 4 evaluation categories for a given service type.
+ */
+export function getScoreCategories(
+  serviceType: ServiceType = "dine_in",
+): readonly ScoreCategory[] {
+  return serviceType === "delivery" ? DELIVERY_SCORE_CATEGORIES : SCORE_CATEGORIES;
+}
+
+/**
+ * Returns the user-facing label for a score category according to the place's service type.
+ */
+export function getScoreCategoryLabel(
+  category: ScoreCategory,
+  serviceType: ServiceType = "dine_in",
+  options?: { compact?: boolean },
+): string {
+  if (serviceType === "delivery") {
+    return options?.compact
+      ? DELIVERY_SCORE_CATEGORY_COMPACT_LABELS[category]
+      : DELIVERY_SCORE_CATEGORY_LABELS[category];
+  }
+  return SCORE_CATEGORY_LABELS[category];
+}
 
 export interface ScoreBreakdown {
   service: number;

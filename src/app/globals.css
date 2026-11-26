@@ -240,3 +240,53 @@ input[type="date"].zine-input::-webkit-date-and-time-value {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Home (HomeMobile / HomeDesktop) building blocks */
+
+/* Score badge: dark green with lime text. */
+.score-badge {
+  font-family: var(--font-display), sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
+  background-color: var(--badge-bg);
+  color: var(--badge-fg);
+  border-radius: 12px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.icon-btn {
+  border: 2px solid var(--border);
+  background-color: var(--surface);
+  color: var(--fg);
+  border-radius: 9999px;
+}
+
+.fab {
+  background-color: var(--badge-bg);
+  color: var(--badge-fg);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow-ink);
+}
+
+.row-hover {
+  transition: background-color 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-hover:hover {
+    background-color: var(--pill-bg);
+  }
+}
+
+/* Horizontal chip rows that scroll without a visible scrollbar. */
+.scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}

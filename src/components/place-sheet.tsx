@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { CategoryScorePicker, ScoreBreakdownGrid } from "@/components/category-score-picker";
+import { VisitEntryEditor } from "@/components/visit-entry-editor";
 import type { AccentColor, MealType, ServiceType } from "@/db/schema";
 import {
   buildGoogleMapsUrl,
@@ -71,6 +72,7 @@ export function PlaceSheet({
   onUpdated,
   onDeleted,
 }: PlaceSheetProps) {
+
   const [editingMeta, setEditingMeta] = useState(false);
   const [name, setName] = useState(place?.name ?? "");
   const [address, setAddress] = useState(place?.address ?? "");
@@ -1206,6 +1208,8 @@ export function PlaceSheet({
                         const color = accentCssVar(entry.userAccent);
                         const isBeingEdited =
                           isEditingThis && editingTarget?.userId === entry.userId;
+                        // The editor below replaces this card while it is open
+                        if (isBeingEdited) return null;
                         return (
                           <div
                             key={entry.id}
@@ -1301,83 +1305,34 @@ export function PlaceSheet({
                     </div>
                   )}
 
-                  {/* Inline entry editor (for any group member) */}
                   {isEditingThis && editingTarget && (
-                    <div
-                      className="flex flex-col gap-3 rounded-xl border-2 p-3"
-                      style={{ borderColor: editingColor, backgroundColor: "var(--surface)" }}
-                    >
-                      <div className="flex flex-col gap-1">
-                        <label
-                          htmlFor={`dish-${visit.id}`}
-                          className="text-[12px] font-semibold"
-                          style={{ color: "var(--fg-muted)" }}
-                        >
-                          {editingTarget.userId === currentUserId
-                            ? `Qué comiste (${editingTarget.userName})`
-                            : `Qué comió ${editingTarget.userName}`}
-                        </label>
-                        <input
-                          id={`dish-${visit.id}`}
-                          type="text"
-                          placeholder={dishPlaceholder}
-                          value={entryDish}
-                          onChange={(e) => setEntryDish(e.target.value)}
-                          className="zine-input"
-                        />
-                      </div>
-
-                      <CategoryScorePicker
-                        scores={entryScores}
-                        color={editingColor}
-                        serviceType={place.serviceType}
-                        legacyHint={entryLegacyHint}
-                        onChange={setEntryScores}
-                      />
-
-                      <textarea
-                        rows={2}
-                        placeholder="Comentario opcional..."
-                        value={entryNote}
-                        onChange={(e) => setEntryNote(e.target.value)}
-                        className="zine-input"
-                      />
-
-                      <div className="flex items-center gap-2">
-                        {editingHasExisting && (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={handleDeleteEntry}
-                            className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
-                            style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
-                          >
-                            Quitar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            setEditingTarget(null);
-                            setEntryLegacyHint(null);
-                          }}
-                          className="pressable rounded-xl border-2 px-3 py-2 text-[12px] font-bold"
-                          style={{ borderColor: "var(--border-soft)", color: "var(--fg-muted)" }}
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={handleSaveEntry}
-                          className="pressable flex-1 rounded-xl px-3 py-2 text-[13px] font-bold disabled:opacity-60"
-                          style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
-                        >
-                          {busy ? "Guardando..." : "Guardar"}
-                        </button>
-                      </div>
-                    </div>
+                    <VisitEntryEditor
+                      visitId={visit.id}
+                      title={editingTarget.userName}
+                      dishLabel={
+                        editingTarget.userId === currentUserId
+                          ? "Qué comiste"
+                          : `Qué comió ${editingTarget.userName}`
+                      }
+                      dishPlaceholder={dishPlaceholder}
+                      color={editingColor}
+                      serviceType={place.serviceType}
+                      legacyHint={entryLegacyHint}
+                      dish={entryDish}
+                      onDishChange={setEntryDish}
+                      scores={entryScores}
+                      onScoresChange={setEntryScores}
+                      note={entryNote}
+                      onNoteChange={setEntryNote}
+                      canDelete={editingHasExisting}
+                      busy={busy}
+                      onDelete={handleDeleteEntry}
+                      onCancel={() => {
+                        setEditingTarget(null);
+                        setEntryLegacyHint(null);
+                      }}
+                      onSave={handleSaveEntry}
+                    />
                   )}
 
                   {/* Quick buttons to add missing group members' entries on this visit */}

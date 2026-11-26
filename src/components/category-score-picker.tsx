@@ -1,6 +1,7 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
+import { useState } from "react";
 import type { ServiceType } from "@/db/schema";
 import {
   computeBreakdownAverage,
@@ -16,149 +17,172 @@ interface CategoryScorePickerProps {
   color: string;
   serviceType?: ServiceType;
   legacyHint?: number | null;
+  /** Hide the "Puntaje" header when the caller already shows the average. */
+  showAverage?: boolean;
   onChange: (next: ScoreBreakdown) => void;
 }
+
+const QUICK_SCORES = [6, 7, 8, 9, 10] as const;
 
 function clampScore(value: number): number {
   return Math.min(10, Math.max(1, Math.round(value * 10) / 10));
 }
 
 /**
- * Compact 4-category rating picker with live computed average, adapting labels for delivery vs dine-in.
+ * Tap-based 4-category rating picker: choose a category, tap a whole number (6 to 10),
+ * then fine-tune by 0,1. Avoids sliders, which fight with scrolling inside sheets on mobile.
+ * Labels adapt for delivery vs dine-in.
  */
 export function CategoryScorePicker({
   scores,
   color,
   serviceType = "dine_in",
   legacyHint,
+  showAverage = true,
   onChange,
 }: CategoryScorePickerProps) {
-  const average = computeBreakdownAverage(scores);
   const categories = getScoreCategories(serviceType);
+  const [active, setActive] = useState<ScoreCategory>(categories[0]!);
+  const value = scores[active];
+  const hint =
+    serviceType === "delivery" && active === "place" ? "Temperatura, armado y packaging" : undefined;
 
-  function setCategory(category: ScoreCategory, value: number) {
-    onChange({ ...scores, [category]: clampScore(value) });
-  }
-
-  function handleNumericInput(category: ScoreCategory, raw: string) {
-    const parsed = parseFloat(raw.replace(",", "."));
-    if (!Number.isNaN(parsed)) {
-      setCategory(category, parsed);
-    }
+  function set(next: number) {
+    onChange({ ...scores, [active]: clampScore(next) });
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-3">
+      {showAverage && (
+        <div className="flex items-center justify-between gap-3">
           <span className="text-[13px] font-bold" style={{ color }}>
-            Puntaje promedio
+            Puntaje
           </span>
-          {legacyHint !== null && legacyHint !== undefined && (
-            <span
-              className="tabular rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
-              style={{ backgroundColor: "var(--pill-bg)", color: "var(--fg-muted)" }}
-            >
-              Antes: {formatScore(legacyHint)}
+          <span className="flex items-center gap-2">
+            {legacyHint !== null && legacyHint !== undefined && (
+              <span className="tabular text-[12px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+                Antes {formatScore(legacyHint)}
+              </span>
+            )}
+            <span className="score-badge text-[18px]">
+              {formatScore(computeBreakdownAverage(scores))}
             </span>
-          )}
+          </span>
         </div>
-        <span className="font-display tabular text-[19px] font-bold" style={{ color }}>
-          {formatScore(average)} / 10
-        </span>
-      </div>
+      )}
 
-      <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-4 gap-1.5" role="tablist" aria-label="Categoría">
         {categories.map((category) => {
-          const val = scores[category];
-          const label = getScoreCategoryLabel(category, serviceType);
-          const hint =
-            serviceType === "delivery" && category === "place"
-              ? "Temperatura, armado y packaging"
-              : undefined;
+          const on = category === active;
           return (
-            <div
+            <button
               key={category}
-              className="flex flex-col gap-1.5 rounded-xl border px-3 py-2"
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setActive(category)}
+              className="pressable flex min-w-0 flex-col items-center rounded-xl border-2 px-1 py-2"
               style={{
-                borderColor: "var(--border-soft)",
-                backgroundColor: "var(--surface)",
+                borderColor: on ? color : "var(--border-soft)",
+                backgroundColor: on ? "var(--bg)" : "transparent",
               }}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-[12.5px] font-bold" title={hint}>
-                    {label}
-                  </span>
-                  {hint && (
-                    <span
-                      className="block text-[10.5px] leading-tight"
-                      style={{ color: "var(--fg-muted)" }}
-                    >
-                      {hint}
-                    </span>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setCategory(category, val - 0.1)}
-                    aria-label={`Restar 0,1 en ${label}`}
-                    className="pressable inline-flex h-7 w-7 items-center justify-center rounded-lg border"
-                    style={{
-                      borderColor: "var(--border-soft)",
-                      backgroundColor: "var(--bg)",
-                    }}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    step={0.1}
-                    inputMode="decimal"
-                    aria-label={`Puntaje de ${label}`}
-                    value={val}
-                    onChange={(e) => handleNumericInput(category, e.target.value)}
-                    className="font-display tabular w-14 rounded-lg border py-0.5 text-center text-[15px] font-bold"
-                    style={{
-                      borderColor: color,
-                      backgroundColor: "var(--bg)",
-                      color,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCategory(category, val + 0.1)}
-                    aria-label={`Sumar 0,1 en ${label}`}
-                    className="pressable inline-flex h-7 w-7 items-center justify-center rounded-lg border"
-                    style={{
-                      borderColor: "var(--border-soft)",
-                      backgroundColor: "var(--bg)",
-                    }}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-
-              <input
-                type="range"
-                min={1}
-                max={10}
-                step={0.1}
-                value={val}
-                onChange={(e) => handleNumericInput(category, e.target.value)}
-                aria-label={`Deslizador de ${label}`}
-                className="w-full cursor-pointer"
-                style={{ accentColor: color }}
-              />
-            </div>
+              <span
+                className="w-full truncate text-center text-[11px] font-bold"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                {getScoreCategoryLabel(category, serviceType, { compact: true })}
+              </span>
+              <span
+                className="font-display tabular text-[18px] font-bold"
+                style={{ color: on ? color : "var(--fg)" }}
+              >
+                {formatScore(scores[category])}
+              </span>
+            </button>
           );
         })}
       </div>
+
+      <div className="flex flex-col gap-2 rounded-xl p-3" style={{ backgroundColor: "var(--bg)" }}>
+        <span className="text-[13px] font-bold">
+          {getScoreCategoryLabel(active, serviceType)}
+          {hint && (
+            <span className="ml-1.5 font-semibold" style={{ color: "var(--fg-muted)" }}>
+              {hint}
+            </span>
+          )}
+        </span>
+        <div className="grid grid-cols-5 gap-1.5">
+          {QUICK_SCORES.map((n) => {
+            const on = Math.floor(value) === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => set(n)}
+                aria-pressed={on}
+                className="pressable font-display tabular h-11 rounded-xl border-2 text-[17px] font-bold"
+                style={{
+                  borderColor: on ? "var(--border)" : "var(--border-soft)",
+                  backgroundColor: on ? "var(--badge-bg)" : "var(--surface)",
+                  color: on ? "var(--badge-fg)" : "var(--fg)",
+                }}
+              >
+                {n}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => set(value >= 6 ? 5 : Math.floor(value) - 1)}
+            className="pressable rounded-lg px-2 py-1 text-[12px] font-bold"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            Menos de 6
+          </button>
+          <div className="flex items-center gap-2">
+            <StepButton label={`Restar 0,1 en ${getScoreCategoryLabel(active, serviceType)}`} onClick={() => set(value - 0.1)}>
+              <Minus className="h-3.5 w-3.5" />
+            </StepButton>
+            <span
+              className="font-display tabular w-12 text-center text-[24px] font-bold"
+              style={{ color }}
+              aria-live="polite"
+            >
+              {formatScore(value)}
+            </span>
+            <StepButton label={`Sumar 0,1 en ${getScoreCategoryLabel(active, serviceType)}`} onClick={() => set(value + 0.1)}>
+              <Plus className="h-3.5 w-3.5" />
+            </StepButton>
+          </div>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function StepButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="pressable inline-flex size-9 shrink-0 items-center justify-center rounded-full border-2"
+      style={{ borderColor: "var(--border-soft)", backgroundColor: "var(--surface)" }}
+    >
+      {children}
+    </button>
   );
 }
 

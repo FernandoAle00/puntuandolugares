@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AccentColor, GroupRole, MealType, ServiceType } from "@/db/schema";
+import type { AccentColor, GroupRole, MealType, PhotoKind, ServiceType } from "@/db/schema";
 
 export const MEALS: readonly MealType[] = [
   "desayuno",
@@ -112,6 +112,7 @@ export const DEFAULT_SCORE_BREAKDOWN: ScoreBreakdown = {
 
 export const mealSchema = z.enum(["desayuno", "almuerzo", "merienda", "cena", "postre"]);
 export const serviceTypeSchema = z.enum(["dine_in", "delivery", "ice_cream"]);
+export const photoKindSchema = z.enum(["general", "next_order"]);
 
 export const scoreSchema = z
   .number({ invalid_type_error: "El puntaje tiene que ser un número" })
@@ -273,6 +274,7 @@ export interface RatingEntry {
 export interface PlacePhotoEntry {
   id: string;
   visitId: string | null;
+  kind: PhotoKind;
   url: string;
   caption: string;
   uploadedBy: string | null;
@@ -549,7 +551,12 @@ export function filterAndSortPlaces(
     const visitsText = p.visits
       .flatMap((v) => v.entries.map((e) => `${e.userName} ${e.dish} ${e.note}`))
       .join(" ");
-    const haystack = `${p.name} ${p.address} ${p.nextOrder} ${notesText} ${visitsText}`.toLowerCase();
+    const nextOrderPhotosText = p.photos
+      .filter((ph) => ph.kind === "next_order")
+      .map((ph) => ph.caption)
+      .join(" ");
+    const haystack =
+      `${p.name} ${p.address} ${p.nextOrder} ${nextOrderPhotosText} ${notesText} ${visitsText}`.toLowerCase();
     return haystack.includes(normalizedQuery);
   });
 

@@ -13,6 +13,7 @@ export type ServiceType = "dine_in" | "delivery" | "ice_cream";
 export type AccentColor = "teal" | "orange" | "cobalt" | "berry";
 export type FriendshipStatus = "pending" | "accepted";
 export type GroupRole = "owner" | "member";
+export type PhotoKind = "general" | "next_order";
 
 // Better Auth core tables
 export const user = sqliteTable("user", {
@@ -197,6 +198,7 @@ export const placePhoto = sqliteTable("place_photo", {
     .notNull()
     .references(() => place.id, { onDelete: "cascade" }),
   visitId: text("visit_id").references(() => placeVisit.id, { onDelete: "set null" }),
+  kind: text("kind").$type<PhotoKind>().notNull().default("general"),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),

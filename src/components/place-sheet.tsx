@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { CategoryScorePicker, ScoreBreakdownGrid } from "@/components/category-score-picker";
 import { VisitEntryEditor } from "@/components/visit-entry-editor";
-import type { AccentColor, MealType, ServiceType } from "@/db/schema";
+import type { AccentColor, MealType, PhotoKind, ServiceType } from "@/db/schema";
 import {
   buildGoogleMapsUrl,
   computeAverage,
@@ -37,6 +37,8 @@ import {
   type ScoreBreakdown,
   type VisitEntryItem,
 } from "@/lib/domain";
+
+const NEXT_ORDER_PHOTO_KEY = "__next_order__";
 
 export function accentCssVar(accent: AccentColor): string {
   switch (accent) {
@@ -110,14 +112,15 @@ export function PlaceSheet({
   const [editDateValue, setEditDateValue] = useState("");
   const [confirmDeleteVisitId, setConfirmDeleteVisitId] = useState<string | null>(null);
 
-  // Photo upload per visit
+  // Photo upload per visit and for next-order reference photos
   const [photoCaptions, setPhotoCaptions] = useState<Record<string, string>>({});
-  const [uploadingVisitId, setUploadingVisitId] = useState<string | null>(null);
+  const [uploadingPhotoKey, setUploadingPhotoKey] = useState<string | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<PlacePhotoEntry | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const uploadingPhotoRef = useRef(false);
 
   useEffect(() => {
     if (!place) return;
@@ -167,7 +170,8 @@ export function PlaceSheet({
     place.serviceType === "ice_cream"
       ? "Ej. Dulce de leche granizado, pistacho..."
       : "Ej. Milanesa napolitana, tabla 1...";
-  const unlinkedPhotos = place.photos.filter((p) => !p.visitId);
+  const nextOrderPhotos = place.photos.filter((p) => p.kind === "next_order");
+  const unlinkedPhotos = place.photos.filter((p) => !p.visitId && p.kind !== "next_order");
   const pastDishes = Array.from(
     new Set(
       place.visits
@@ -497,18 +501,27 @@ export function PlaceSheet({
     }
   }
 
-  async function handlePhotoSelected(visitId: string | null, e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !place) return;
-    const key = visitId ?? "__general__";
-    setUploadingVisitId(key);
+  async function handlePhotoSelected(
+    options: { visitId: string | null; kind: PhotoKind },
+    e: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = "";
+    if (!file || !place || uploadingPhotoRef.current) return;
+    const key =
+      options.kind === "next_order"
+        ? NEXT_ORDER_PHOTO_KEY
+        : (options.visitId ?? "__general__");
+    uploadingPhotoRef.current = true;
+    setUploadingPhotoKey(key);
     setError(null);
 
     try {
       const fd = new FormData();
       fd.append("file", file);
-      if (visitId) {
-        fd.append("visitId", visitId);
+      fd.append("kind", options.kind);
+      if (options.visitId) {
+        fd.append("visitId", options.visitId);
       }
       const caption = (photoCaptions[key] ?? "").trim();
       if (caption) {
@@ -527,18 +540,16 @@ export function PlaceSheet({
 
       if (!res.ok || !data?.place) {
         setError(data?.error || "No se pudo subir la foto");
-        setUploadingVisitId(null);
         return;
       }
 
       onUpdated(data.place);
       setPhotoCaptions((prev) => ({ ...prev, [key]: "" }));
-      const inputEl = fileInputsRef.current[key];
-      if (inputEl) inputEl.value = "";
-      setUploadingVisitId(null);
     } catch {
       setError("Error al subir la foto");
-      setUploadingVisitId(null);
+    } finally {
+      uploadingPhotoRef.current = false;
+      setUploadingPhotoKey(null);
     }
   }
 
@@ -763,7 +774,7 @@ export function PlaceSheet({
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <input
                 type="text"
                 placeholder={
@@ -782,7 +793,7 @@ export function PlaceSheet({
                     void handleSaveNextOrder();
                   }
                 }}
-                className="zine-input flex-1"
+                className="zine-input min-w-0 flex-1"
               />
               <button
                 type="button"
@@ -792,6 +803,88 @@ export function PlaceSheet({
                 style={{ backgroundColor: "var(--fg)", color: "var(--bg)" }}
               >
                 Guardar
+              </button>
+            </div>
+
+            {nextOrderPhotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {nextOrderPhotos.map((photo) => (
+                  <div
+                    key={photo.id}
+                    className="group relative aspect-square overflow-hidden rounded-xl border-2"
+                    style={{ borderColor: "var(--border-soft)" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLightboxPhoto(photo)}
+                      className="h-full w-full"
+                      aria-label={photo.caption || `Foto para la próxima vez en ${place.name}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.url}
+                        alt={photo.caption || `Foto para la próxima vez en ${place.name}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      {photo.caption && (
+                        <span
+                          className="absolute inset-x-0 bottom-0 truncate px-1.5 py-1 text-left text-[10.5px] leading-tight font-semibold text-white"
+                          style={{ backgroundColor: "rgba(0, 0, 0, 0.68)" }}
+                        >
+                          {photo.caption}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleDeletePhoto(photo.id)}
+                      aria-label="Borrar foto de próxima vez"
+                      className="pressable absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full"
+                      style={{ backgroundColor: "rgba(0,0,0,0.68)", color: "#ffffff" }}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex min-w-0 items-center gap-2">
+              <input
+                type="text"
+                placeholder="Plato de la foto (opcional)"
+                value={photoCaptions[NEXT_ORDER_PHOTO_KEY] ?? ""}
+                onChange={(e) =>
+                  setPhotoCaptions((prev) => ({
+                    ...prev,
+                    [NEXT_ORDER_PHOTO_KEY]: e.target.value,
+                  }))
+                }
+                className="zine-input min-w-0 flex-1"
+              />
+              <input
+                ref={(el) => {
+                  fileInputsRef.current[NEXT_ORDER_PHOTO_KEY] = el;
+                }}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                onChange={(e) => handlePhotoSelected({ visitId: null, kind: "next_order" }, e)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={uploadingPhotoKey !== null}
+                onClick={() => fileInputsRef.current[NEXT_ORDER_PHOTO_KEY]?.click()}
+                className="pressable inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border-2 px-3 py-2 text-[12px] font-bold whitespace-nowrap disabled:opacity-60"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "var(--surface)",
+                }}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                {uploadingPhotoKey === NEXT_ORDER_PHOTO_KEY ? "Subiendo..." : "Subir foto"}
               </button>
             </div>
           </section>
@@ -1109,7 +1202,7 @@ export function PlaceSheet({
                 ? accentCssVar(editingTarget.userAccent)
                 : myColor;
               const isEditingDate = editingDateVisitId === visit.id;
-              const isUploadingHere = uploadingVisitId === visit.id;
+              const isUploadingHere = uploadingPhotoKey === visit.id;
               const captionVal = photoCaptions[visit.id] ?? "";
 
               return (
@@ -1427,12 +1520,12 @@ export function PlaceSheet({
                         }}
                         type="file"
                         accept="image/jpeg,image/png,image/webp,image/avif"
-                        onChange={(e) => handlePhotoSelected(visit.id, e)}
+                        onChange={(e) => handlePhotoSelected({ visitId: visit.id, kind: "general" }, e)}
                         className="hidden"
                       />
                       <button
                         type="button"
-                        disabled={isUploadingHere}
+                        disabled={uploadingPhotoKey !== null}
                         onClick={() => fileInputsRef.current[visit.id]?.click()}
                         className="pressable inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border-2 px-3 py-2 text-[12px] font-bold whitespace-nowrap disabled:opacity-60"
                         style={{

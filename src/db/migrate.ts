@@ -125,6 +125,7 @@ const CREATE_TABLES_SQL: string[] = [
     id text PRIMARY KEY NOT NULL,
     place_id text NOT NULL REFERENCES place(id) ON DELETE cascade,
     visit_id text REFERENCES place_visit(id) ON DELETE set null,
+    kind text DEFAULT 'general' NOT NULL,
     user_id text REFERENCES user(id) ON DELETE set null,
     filename text NOT NULL,
     mime_type text NOT NULL,
@@ -158,6 +159,11 @@ const COLUMN_MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
     table: "place_photo",
     column: "visit_id",
     ddl: "ALTER TABLE place_photo ADD COLUMN visit_id text REFERENCES place_visit(id) ON DELETE set null",
+  },
+  {
+    table: "place_photo",
+    column: "kind",
+    ddl: "ALTER TABLE place_photo ADD COLUMN kind text NOT NULL DEFAULT 'general'",
   },
   {
     table: "visit_entry",
@@ -241,7 +247,7 @@ async function backfillLegacyRatingsIntoVisits(): Promise<number> {
           ],
         })),
         {
-          sql: `UPDATE place_photo SET visit_id = ? WHERE place_id = ? AND visit_id IS NULL`,
+          sql: `UPDATE place_photo SET visit_id = ? WHERE place_id = ? AND visit_id IS NULL AND kind = 'general'`,
           args: [visitId, placeId],
         },
       ],

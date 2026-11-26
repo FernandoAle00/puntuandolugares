@@ -6,7 +6,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AddPlaceModal } from "@/components/add-place-modal";
 import { HomeDesktop } from "@/components/home/home-desktop";
 import { HomeMobile } from "@/components/home/home-mobile";
@@ -74,12 +74,62 @@ export function PocketGuide({
     placeName: string;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const lightboxDialogRef = useRef<HTMLDivElement | null>(null);
+  const lightboxCloseBtnRef = useRef<HTMLButtonElement | null>(null);
+  const lightboxTriggerRef = useRef<HTMLElement | null>(null);
+
+  function openLightbox(
+    photos: PlacePhotoEntry[],
+    index: number,
+    placeName: string,
+    triggerEl: HTMLElement | null = null,
+  ) {
+    lightboxTriggerRef.current = triggerEl;
+    setLightbox({ photos, index, placeName });
+  }
+
+  function closeLightbox() {
+    setLightbox(null);
+    const trigger = lightboxTriggerRef.current;
+    lightboxTriggerRef.current = null;
+    requestAnimationFrame(() => trigger?.focus());
+  }
+
+  const isLightboxOpen = lightbox !== null;
+  useEffect(() => {
+    if (isLightboxOpen) {
+      lightboxCloseBtnRef.current?.focus();
+    }
+  }, [isLightboxOpen]);
 
   useEffect(() => {
-    if (!lightbox) return;
+    if (!isLightboxOpen) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setLightbox(null);
+        closeLightbox();
+      } else if (e.key === "Tab") {
+        const dialog = lightboxDialogRef.current;
+        if (!dialog) return;
+        const focusables = Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (!first || !last) {
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          if (document.activeElement === first || !dialog.contains(document.activeElement)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (document.activeElement === last || !dialog.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        }
       } else if (e.key === "ArrowLeft") {
         setLightbox((prev) =>
           prev && prev.photos.length > 1
@@ -96,7 +146,7 @@ export function PocketGuide({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightbox]);
+  }, [isLightboxOpen]);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) ?? null,
@@ -322,7 +372,8 @@ export function PocketGuide({
     refresh: handleRefresh,
     refreshing,
     logout: handleLogout,
-    openLightbox: (photos, index, placeName) => setLightbox({ photos, index, placeName }),
+    openLightbox: (photos, index, placeName, triggerEl) =>
+      openLightbox(photos, index, placeName, triggerEl ?? null),
   };
 
   return (
@@ -373,6 +424,7 @@ export function PocketGuide({
         const total = lightbox.photos.length;
         return (
           <div
+            ref={lightboxDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Foto de ${lightbox.placeName}`}
@@ -382,11 +434,12 @@ export function PocketGuide({
               paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
               paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
             }}
-            onClick={() => setLightbox(null)}
+            onClick={closeLightbox}
           >
             <button
+              ref={lightboxCloseBtnRef}
               type="button"
-              onClick={() => setLightbox(null)}
+              onClick={closeLightbox}
               aria-label="Cerrar foto"
               className="pressable absolute right-4 inline-flex h-10 w-10 items-center justify-center rounded-full"
               style={{

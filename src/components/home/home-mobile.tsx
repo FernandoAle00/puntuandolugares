@@ -10,6 +10,7 @@ import { useState } from "react";
 import { computeAverage, computeGap, formatScore, isPendingPlace, MEAL_LABELS, MEALS, type ViewMode } from "@/lib/domain";
 import {
   GroupSelect,
+  nextOrderPhotosOf,
   OverflowMenu,
   pickLabel,
   sectionItems,
@@ -160,6 +161,7 @@ export function HomeMobile({ m }: { m: HomeModel }) {
               const pending = isPendingPlace(place);
               const highlighted = (isRepeat || m.mode === "pending") && m.pickedPlace?.id === place.id;
               const score = m.mode === "gap" && !isRepeat ? computeGap(place.ratings) : computeAverage(place.ratings);
+              const nextOrderPhotos = nextOrderPhotosOf(place);
               const meta = [
                 place.meals.map((x) => MEAL_LABELS[x]).join(", "),
                 visitsLabel(place),
@@ -168,13 +170,15 @@ export function HomeMobile({ m }: { m: HomeModel }) {
               return (
                 <li
                   key={place.id}
-                  style={{ borderTop: i > 0 ? "1.5px solid var(--border-soft)" : undefined }}
+                  style={{
+                    borderTop: i > 0 ? "1.5px solid var(--border-soft)" : undefined,
+                    backgroundColor: highlighted ? "var(--card-pick-bg)" : undefined,
+                  }}
                 >
                   <button
                     type="button"
                     onClick={() => m.openPlace(place.id)}
-                    className="row-hover grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5 text-left"
-                    style={highlighted ? { backgroundColor: "var(--card-pick-bg)" } : undefined}
+                    className={`row-hover grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-3 px-4 pt-3.5 text-left ${place.repeatMarked && nextOrderPhotos.length > 0 ? "pb-2" : "pb-3.5"}`}
                   >
                     <span className="font-display tabular pt-0.5 text-[15px] font-bold" style={{ color: "var(--fg-muted)" }}>
                       {pending ? "" : i + 1}
@@ -195,10 +199,12 @@ export function HomeMobile({ m }: { m: HomeModel }) {
                       <span className="mt-0.5 block truncate text-[12.5px]" style={{ color: "var(--fg-muted)" }}>
                         {meta.join(" · ")}
                       </span>
-                      {place.repeatMarked && place.nextOrder.trim() && (
+                      {place.repeatMarked && (place.nextOrder.trim() || nextOrderPhotos.length > 0) && (
                         <span className="mt-1 block text-[12.5px]">
-                          <span className="font-bold">Próxima vez: </span>
-                          {place.nextOrder}
+                          <span className="font-bold">
+                            {place.nextOrder.trim() ? "Próxima vez: " : "Próxima vez"}
+                          </span>
+                          {place.nextOrder.trim()}
                         </span>
                       )}
                       <UserScores place={place} className="mt-1 text-[12px] font-bold" />
@@ -216,6 +222,50 @@ export function HomeMobile({ m }: { m: HomeModel }) {
                       </span>
                     )}
                   </button>
+                  {place.repeatMarked && nextOrderPhotos.length > 0 && (
+                    <div className="flex items-center gap-2 pr-4 pb-3.5 pl-[50px]">
+                      {nextOrderPhotos.slice(0, 4).map((photo, photoIdx) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={(e) =>
+                            m.openLightbox(nextOrderPhotos, photoIdx, place.name, e.currentTarget)
+                          }
+                          aria-label={
+                            photo.caption
+                              ? `Ver foto para próxima vez: ${photo.caption}`
+                              : `Ver foto para próxima vez en ${place.name}`
+                          }
+                          className="pressable h-12 w-12 overflow-hidden rounded-xl border p-0"
+                          style={{ borderColor: "var(--border-soft)" }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={photo.url}
+                            alt={photo.caption || `Foto para próxima vez en ${place.name}`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                      {nextOrderPhotos.length > 4 && (
+                        <button
+                          type="button"
+                          onClick={(e) =>
+                            m.openLightbox(nextOrderPhotos, 4, place.name, e.currentTarget)
+                          }
+                          aria-label={`Ver ${nextOrderPhotos.length - 4} fotos más para próxima vez en ${place.name}`}
+                          className="pressable tabular rounded-lg px-2 py-1 text-[12px] font-bold"
+                          style={{
+                            backgroundColor: "var(--pill-bg)",
+                            color: "var(--pill-fg)",
+                          }}
+                        >
+                          +{nextOrderPhotos.length - 4}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}

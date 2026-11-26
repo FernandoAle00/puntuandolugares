@@ -68,7 +68,12 @@ export interface HomeModel {
   refresh: () => Promise<void>;
   refreshing: boolean;
   logout: () => Promise<void>;
-  openLightbox: (photos: PlacePhotoEntry[], index: number, placeName: string) => void;
+  openLightbox: (
+    photos: PlacePhotoEntry[],
+    index: number,
+    placeName: string,
+    triggerEl?: HTMLElement | null,
+  ) => void;
 }
 
 export interface SectionItem {
@@ -123,6 +128,14 @@ export function visitsLabel(place: PlaceWithRatings): string | null {
   if (n === 0) return null;
   if (place.serviceType === "delivery") return `${n} ${n === 1 ? "pedido" : "pedidos"}`;
   return `${n} ${n === 1 ? "visita" : "visitas"}`;
+}
+
+export function nextOrderPhotosOf(place: PlaceWithRatings): PlacePhotoEntry[] {
+  return place.photos.filter((p) => p.kind === "next_order");
+}
+
+export function regularPhotosOf(place: PlaceWithRatings): PlacePhotoEntry[] {
+  return place.photos.filter((p) => p.kind !== "next_order");
 }
 
 export interface ReviewItem {

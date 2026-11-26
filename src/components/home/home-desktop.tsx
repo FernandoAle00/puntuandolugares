@@ -20,8 +20,10 @@ import {
 } from "@/lib/domain";
 import {
   GroupSelect,
+  nextOrderPhotosOf,
   OverflowMenu,
   pickLabel,
+  regularPhotosOf,
   sectionItems,
   UserScores,
   visitsLabel,
@@ -50,7 +52,13 @@ export function HomeDesktop({ m }: { m: HomeModel }) {
   const podium = isRepeat ? [] : lists.top.slice(0, 3);
   const rest = isRepeat ? lists.top : lists.top.slice(3);
   const picked = m.pickedPlace;
-  const pickedPhoto = picked?.photos[0];
+  const pickedNextPhotos = picked ? nextOrderPhotosOf(picked) : [];
+  const pickedLightboxPhotos = picked
+    ? isRepeat && pickedNextPhotos.length > 0
+      ? pickedNextPhotos
+      : picked.photos
+    : [];
+  const pickedPhoto = pickedLightboxPhotos[0];
 
   return (
     <div className="pb-24">
@@ -136,7 +144,9 @@ export function HomeDesktop({ m }: { m: HomeModel }) {
                 <div className="mt-3 text-[15px] font-semibold" style={{ color: "var(--highlight-muted)" }}>
                   {isRepeat && picked.nextOrder
                     ? `Próxima vez: ${picked.nextOrder}`
-                    : [picked.meals.map((x) => MEAL_LABELS[x]).join(" o "), picked.address].filter(Boolean).join(" · ")}
+                    : isRepeat && pickedNextPhotos.length > 0
+                      ? `Próxima vez: ${pickedNextPhotos.length} ${pickedNextPhotos.length === 1 ? "foto" : "fotos"}`
+                      : [picked.meals.map((x) => MEAL_LABELS[x]).join(" o "), picked.address].filter(Boolean).join(" · ")}
                 </div>
                 <div className="mt-6 flex flex-wrap gap-2">
                   {m.canSpin && (
@@ -171,7 +181,7 @@ export function HomeDesktop({ m }: { m: HomeModel }) {
           {pickedPhoto && picked && (
             <button
               type="button"
-              onClick={() => m.openLightbox(picked.photos, 0, picked.name)}
+              onClick={(e) => m.openLightbox(pickedLightboxPhotos, 0, picked.name, e.currentTarget)}
               className="aspect-[4/3] overflow-hidden rounded-2xl border-2"
               style={{ borderColor: "var(--border)" }}
               aria-label={`Ver fotos de ${picked.name}`}
@@ -217,15 +227,25 @@ export function HomeDesktop({ m }: { m: HomeModel }) {
         {rest.length > 0 && (
           <Block title={isRepeat ? "A repetir" : podium.length ? "" : "Top"} count={isRepeat ? rest.length : undefined}>
             <ol className="zine-card m-0 grid list-none overflow-hidden p-0 grid-cols-2" start={podium.length + 1}>
-              {rest.map((place, i) => (
-                <CompactRow
-                  key={place.id}
-                  place={place}
-                  rank={isRepeat ? null : podium.length + i + 1}
-                  m={m}
-                  note={isRepeat && place.nextOrder ? `Próxima vez: ${place.nextOrder}` : undefined}
-                />
-              ))}
+              {rest.map((place, i) => {
+                const nextPhotos = nextOrderPhotosOf(place);
+                const repeatNote =
+                  isRepeat && place.nextOrder
+                    ? `Próxima vez: ${place.nextOrder}`
+                    : isRepeat && nextPhotos.length > 0
+                      ? `Próxima vez: ${nextPhotos.length} ${nextPhotos.length === 1 ? "foto" : "fotos"}`
+                      : undefined;
+                return (
+                  <CompactRow
+                    key={place.id}
+                    place={place}
+                    rank={isRepeat ? null : podium.length + i + 1}
+                    m={m}
+                    isRepeat={isRepeat}
+                    note={repeatNote}
+                  />
+                );
+              })}
             </ol>
           </Block>
         )}
@@ -301,7 +321,7 @@ function Block({ title, count, children }: { title: string; count?: number; chil
 }
 
 function PodiumItem({ place, rank, m }: { place: PlaceWithRatings; rank: number; m: HomeModel }) {
-  const photo = place.photos[0];
+  const photo = regularPhotosOf(place)[0] ?? place.photos[0];
   const meta = [place.meals.map((x) => MEAL_LABELS[x]).join(", "), visitsLabel(place)].filter(Boolean).join(" · ");
   return (
     <li>
@@ -342,25 +362,51 @@ function CompactRow({
   place,
   rank,
   m,
+  isRepeat = false,
   note,
 }: {
   place: PlaceWithRatings;
   rank: number | null;
   m: HomeModel;
+  isRepeat?: boolean;
   note?: string;
 }) {
   const avg = computeAverage(place.ratings);
+  const nextPhotos = nextOrderPhotosOf(place);
+  const regularPhotos = regularPhotosOf(place);
+  const thumbPhotos = isRepeat && nextPhotos.length > 0 ? nextPhotos : regularPhotos.length > 0 ? regularPhotos : place.photos;
+  const thumb = thumbPhotos[0];
   return (
-    <li style={{ borderBottom: "1.5px solid var(--border-soft)" }}>
-      <button type="button" onClick={() => m.openPlace(place.id)} className="row-hover flex w-full items-center gap-3 px-4 py-3 text-left">
+    <li className="row-hover flex items-center" style={{ borderBottom: "1.5px solid var(--border-soft)" }}>
+      {thumb && isRepeat && nextPhotos.length > 0 && (
+        <button
+          type="button"
+          onClick={(e) => m.openLightbox(nextPhotos, 0, place.name, e.currentTarget)}
+          aria-label={
+            thumb.caption
+              ? `Ver foto para próxima vez: ${thumb.caption}`
+              : `Ver foto para próxima vez en ${place.name}`
+          }
+          className="pressable ml-4 h-10 w-10 shrink-0 overflow-hidden rounded-lg border p-0"
+          style={{ borderColor: "var(--border-soft)" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={thumb.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => m.openPlace(place.id)}
+        className={`flex min-w-0 flex-1 items-center gap-3 py-3 pr-4 text-left ${thumb && isRepeat && nextPhotos.length > 0 ? "pl-3" : "pl-4"}`}
+      >
         {rank !== null && (
           <span className="font-display tabular w-5 shrink-0 text-[14px] font-bold" style={{ color: "var(--fg-muted)" }}>
             {rank}
           </span>
         )}
-        {place.photos[0] && (
+        {thumb && !(isRepeat && nextPhotos.length > 0) && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={place.photos[0].url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+          <img src={thumb.url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
         )}
         <span className="min-w-0 flex-1">
           <span className="font-display block truncate text-[16px] font-bold">{place.name}</span>

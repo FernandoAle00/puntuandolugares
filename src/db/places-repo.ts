@@ -9,11 +9,13 @@ import {
   rating,
   user,
   visitEntry,
+  type PhotoKind,
 } from "@/db/schema";
 import {
   computeBreakdownAverage,
   deriveRatingsFromVisits,
   getTodayIsoDate,
+  photoKindSchema,
   type CreatePlaceInput,
   type CreateVisitInput,
   type PlacePhotoEntry,
@@ -112,6 +114,7 @@ export async function listPlacesForUser(
         id: placePhoto.id,
         placeId: placePhoto.placeId,
         visitId: placePhoto.visitId,
+        kind: placePhoto.kind,
         caption: placePhoto.caption,
         createdAt: placePhoto.createdAt,
         userName: user.name,
@@ -172,6 +175,7 @@ export async function listPlacesForUser(
     const entry: PlacePhotoEntry = {
       id: row.id,
       visitId: row.visitId ?? null,
+      kind: row.kind,
       url: `/api/photos/${row.id}`,
       caption: row.caption,
       uploadedBy: row.userName ?? null,
@@ -239,6 +243,7 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
       .select({
         id: placePhoto.id,
         visitId: placePhoto.visitId,
+        kind: placePhoto.kind,
         caption: placePhoto.caption,
         createdAt: placePhoto.createdAt,
         userName: user.name,
@@ -296,6 +301,7 @@ export async function getPlaceWithRatings(placeId: string): Promise<PlaceWithRat
   const photos: PlacePhotoEntry[] = photoRows.map((ph) => ({
     id: ph.id,
     visitId: ph.visitId ?? null,
+    kind: ph.kind,
     url: `/api/photos/${ph.id}`,
     caption: ph.caption,
     uploadedBy: ph.userName ?? null,
@@ -777,13 +783,26 @@ export async function deleteUserRating(
 export async function addPlacePhotoRecord(params: {
   placeId: string;
   visitId?: string | null;
+  kind?: PhotoKind;
   userId: string;
   filename: string;
   mimeType: string;
   caption: string;
 }): Promise<
-  { status: "ok"; place: PlaceWithRatings } | { status: "not_found" } | { status: "forbidden" }
+  | { status: "ok"; place: PlaceWithRatings }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+  | { status: "invalid" }
 > {
+  const parsedKind = photoKindSchema.safeParse(params.kind ?? "general");
+  if (!parsedKind.success) {
+    return { status: "invalid" };
+  }
+  const kind: PhotoKind = parsedKind.data;
+  if (kind === "next_order" && params.visitId) {
+    return { status: "invalid" };
+  }
+
   const [existingPlace] = await db
     .select({ id: place.id, groupId: place.groupId })
     .from(place)
@@ -810,6 +829,7 @@ export async function addPlacePhotoRecord(params: {
     id: crypto.randomUUID(),
     placeId: params.placeId,
     visitId: verifiedVisitId,
+    kind,
     userId: params.userId,
     filename: params.filename,
     mimeType: params.mimeType,

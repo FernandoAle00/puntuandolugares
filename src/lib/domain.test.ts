@@ -14,6 +14,7 @@ import {
   friendRequestSchema,
   getScoreCategories,
   getScoreCategoryLabel,
+  photoKindSchema,
   pickRandomPending,
   scoreSchema,
   updatePlaceSchema,
@@ -588,6 +589,41 @@ describe("rating calculations, visits, and filtering", () => {
         onlyRepeat: true,
       }).map((p) => p.id),
     ).toEqual(["dominga", "rapanui", "sushi-home"]);
+
+    expect(photoKindSchema.safeParse("general").success).toBe(true);
+    expect(photoKindSchema.safeParse("next_order").success).toBe(true);
+    expect(photoKindSchema.safeParse("").success).toBe(false);
+    expect(photoKindSchema.safeParse(" next_order ").success).toBe(false);
+    expect(photoKindSchema.safeParse("avatar").success).toBe(false);
+
+    const firstPlace = SAMPLE_PLACES[0];
+    expect(firstPlace).toBeDefined();
+    if (!firstPlace) return;
+
+    const withNextOrderPhoto: PlaceWithRatings[] = [
+      {
+        ...firstPlace,
+        photos: [
+          {
+            id: "ph-next-1",
+            visitId: null,
+            kind: "next_order",
+            url: "/api/photos/ph-next-1",
+            caption: "Volcán de dulce de leche",
+            uploadedBy: "Fer",
+            createdAt: "2026-11-26T20:00:00.000Z",
+          },
+        ],
+      },
+    ];
+    expect(
+      filterAndSortPlaces(withNextOrderPhoto, {
+        mode: "ranking",
+        meal: "all",
+        onlyRepeat: true,
+        query: "volcán",
+      }).map((p) => p.id),
+    ).toEqual(["dominga"]);
 
     expect(
       filterAndSortPlaces(combined, {

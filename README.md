@@ -58,3 +58,4 @@ Abrir [http://localhost:3000](http://localhost:3000).
 - `npm test` corre los tests unitarios con Vitest.
 - `npm run db:push` sincroniza el esquema Drizzle con la base de datos.
 - `npm run db:seed` crea las cuentas iniciales (si no existen), el grupo "Fer y Juli" y los lugares precargados.
+- `npm run db:seed-demo` carga una base de prueba con datos ficticios (5 usuarios con clave `demo12345`, grupos, lugares, visitas y fotos). Solo corre si `DATABASE_URL` apunta a un archivo local con "demo" en el nombre, por ejemplo: `DATABASE_URL=file:./data/demo.db UPLOADS_DIR=data/uploads-demo npm run db:migrate && DATABASE_URL=file:./data/demo.db UPLOADS_DIR=data/uploads-demo npm run db:seed-demo`.
